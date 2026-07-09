@@ -1,381 +1,150 @@
-const DEFAULT_TERMS = [
-  "og renegade raider",
-  "renegade raider",
-  "og skull trooper",
-  "skull trooper",
-  "purple skull",
-  "og ghoul trooper",
-  "ghoul trooper",
-  "pink ghoul",
-  "og aerial assault",
-  "aerial assault trooper",
-  "aerial assault",
-  "og raiders revenge",
-  "raider's revenge",
-  "raiders revenge",
-  "raider revenge"
+const DEFAULT_TERMS=[
+"og renegade raider","renegade raider","og skull trooper","skull trooper","purple skull",
+"og ghoul trooper","ghoul trooper","pink ghoul","og aerial assault","aerial assault trooper",
+"aerial assault","og raiders revenge","raider's revenge","raiders revenge","raider revenge"
 ];
+const K={terms:"wrota_lzt_terms_v1",cases:"wrota_lzt_cases_v1"};
+const $=id=>document.getElementById(id);
+let sessionKey="";
 
-const STORAGE_KEYS = {
-  terms: "lzt_static_terms_v2",
-  cases: "lzt_static_cases_v2",
-  theme: "lzt_static_theme_v2"
-};
+function esc(s){return String(s??"").replace(/[&<>'"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#039;",'"':"&quot;"}[m]));}
+function terms(){try{return JSON.parse(localStorage.getItem(K.terms))||DEFAULT_TERMS}catch{return DEFAULT_TERMS}}
+function saveTerms(t){localStorage.setItem(K.terms,JSON.stringify([...new Set(t.map(x=>x.trim().toLowerCase()).filter(Boolean))]));}
+function cases(){try{return JSON.parse(localStorage.getItem(K.cases))||[]}catch{return[]}}
+function saveCases(c){localStorage.setItem(K.cases,JSON.stringify(c.slice(0,500)));}
+function key(){const t=$("apiToken").value.trim(); if(t) sessionKey=t; return sessionKey;}
+function badge(t,cls=""){$("badge").textContent=t;$("badge").className="badge "+cls;}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
-const el = (id) => document.getElementById(id);
-let sessionToken = "";
-
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (m) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#039;"
-  }[m]));
-}
-
-function loadTerms() {
-  const raw = localStorage.getItem(STORAGE_KEYS.terms);
-  if (!raw) return [...DEFAULT_TERMS];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [...DEFAULT_TERMS];
-  } catch {
-    return [...DEFAULT_TERMS];
+function renderTerms(){
+  $("watchlistBox").innerHTML="";
+  for(const term of terms()){
+    const chip=document.createElement("span");
+    chip.className="term";
+    chip.innerHTML=`${esc(term)} <button title="Remove">×</button>`;
+    chip.querySelector("button").onclick=()=>{saveTerms(terms().filter(t=>t!==term));renderTerms();};
+    $("watchlistBox").appendChild(chip);
   }
 }
 
-function saveTerms(terms) {
-  localStorage.setItem(
-    STORAGE_KEYS.terms,
-    JSON.stringify([...new Set(terms.map(t => t.trim().toLowerCase()).filter(Boolean))])
-  );
-}
-
-function loadCases() {
-  const raw = localStorage.getItem(STORAGE_KEYS.cases);
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+function flatten(obj){
+  const out=[];
+  function walk(v){
+    if(Array.isArray(v)) v.forEach(walk);
+    else if(v&&typeof v==="object") Object.entries(v).forEach(([k,val])=>{out.push(k);walk(val);});
+    else if(v!==undefined&&v!==null) out.push(String(v));
   }
+  walk(obj); return out.join(" ").toLowerCase();
 }
-
-function saveCases(cases) {
-  localStorage.setItem(STORAGE_KEYS.cases, JSON.stringify(cases.slice(0, 500)));
-}
-
-function getToken() {
-  const typed = el("apiToken").value.trim();
-  if (typed) sessionToken = typed;
-  return sessionToken;
-}
-
-function apiBase() {
-  return el("apiBase").value.trim().replace(/\/+$/, "");
-}
-
-function categoryPath() {
-  const path = el("categoryPath").value.trim() || "/fortnite";
-  return path.startsWith("/") ? path : `/${path}`;
-}
-
-async function lztGet(path, params = {}) {
-  const token = getToken();
-  if (!token) throw new Error("Paste your LZT API token first.");
-
-  const url = new URL(apiBase() + path);
-  Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, v);
-  });
-
-  const res = await fetch(url.toString(), {
-    method: "GET",
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Accept": "application/json"
-    }
-  });
-
-  if (res.status === 401) throw new Error("401 from LZT. Token is invalid/expired or needs rotating.");
-  if (res.status === 429) throw new Error("429 from LZT. Rate limited. Wait and try again.");
-  if (!res.ok) throw new Error(`LZT request failed: HTTP ${res.status}`);
-
-  return await res.json();
-}
-
-function renderWatchlist() {
-  const terms = loadTerms();
-  const box = el("watchlist");
-  box.innerHTML = "";
-
-  for (const term of terms) {
-    const chip = document.createElement("span");
-    chip.className = "term";
-    chip.innerHTML = `${escapeHtml(term)} <button title="Remove">×</button>`;
-    chip.querySelector("button").addEventListener("click", () => {
-      saveTerms(loadTerms().filter(t => t !== term));
-      renderWatchlist();
-    });
-    box.appendChild(chip);
+function matched(obj){const text=typeof obj==="string"?obj.toLowerCase():flatten(obj);return terms().filter(t=>text.includes(t));}
+function extractItems(data){
+  if(Array.isArray(data?.items))return data.items;
+  if(Array.isArray(data?.data))return data.data;
+  if(Array.isArray(data?.results))return data.results;
+  const found=[];
+  function walk(v){
+    if(Array.isArray(v)){
+      const ds=v.filter(x=>x&&typeof x==="object"&&!Array.isArray(x));
+      if(ds.length&&ds.some(x=>"item_id"in x||"title"in x||"price"in x)) found.push(...ds);
+      v.forEach(walk);
+    } else if(v&&typeof v==="object") Object.values(v).forEach(walk);
   }
+  walk(data); return found;
 }
+function path(obj,p){return p.split(".").reduce((a,k)=>(a&&typeof a==="object")?a[k]:undefined,obj);}
+function pick(obj,paths,def="Unknown"){for(const p of paths){const v=path(obj,p);if(v!==undefined&&v!==null&&v!==""&&!(Array.isArray(v)&&!v.length))return v;}return def;}
+function itemId(item){return String(pick(item,["item_id","item.item_id","id"],"")||"");}
+function merge(a,b){const c={}; if(a&&typeof a==="object")Object.assign(c,a); if(b&&typeof b==="object"){if(b.item&&typeof b.item==="object")Object.assign(c,b.item); if(b.data&&typeof b.data==="object"&&!Array.isArray(b.data))Object.assign(c,b.data); Object.assign(c,b);} return c;}
+function fmtTime(v){const n=Number(v); if(Number.isFinite(n)&&n>1000000000)return new Date(n*1000).toISOString().replace("T"," ").replace(".000Z"," UTC"); return String(v??"Unknown");}
+function short(v){let s=typeof v==="object"?JSON.stringify(v):String(v??"Unknown");s=s.replace(/\s+/g," ").trim();return s.length>450?s.slice(0,447)+"...":s;}
 
-function flattenText(obj) {
-  const parts = [];
-  function walk(value) {
-    if (Array.isArray(value)) {
-      value.forEach(walk);
-    } else if (value && typeof value === "object") {
-      Object.entries(value).forEach(([k, v]) => {
-        parts.push(k);
-        walk(v);
-      });
-    } else if (value !== null && value !== undefined) {
-      parts.push(String(value));
-    }
-  }
-  walk(obj);
-  return parts.join(" ").toLowerCase();
-}
-
-function matchedTerms(obj) {
-  const text = typeof obj === "string" ? obj.toLowerCase() : flattenText(obj);
-  return loadTerms().filter(term => text.includes(term.toLowerCase()));
-}
-
-function extractItems(apiResponse) {
-  if (Array.isArray(apiResponse?.items)) return apiResponse.items;
-  if (Array.isArray(apiResponse?.data)) return apiResponse.data;
-  if (Array.isArray(apiResponse?.results)) return apiResponse.results;
-
-  const found = [];
-  function walk(value) {
-    if (Array.isArray(value)) {
-      const dicts = value.filter(x => x && typeof x === "object" && !Array.isArray(x));
-      if (dicts.length && dicts.some(x => "item_id" in x || "title" in x || "price" in x)) {
-        found.push(...dicts);
-      }
-      value.forEach(walk);
-    } else if (value && typeof value === "object") {
-      Object.values(value).forEach(walk);
-    }
-  }
-  walk(apiResponse);
-  return found;
-}
-
-function getPath(obj, path) {
-  let cur = obj;
-  for (const part of path.split(".")) {
-    if (!cur || typeof cur !== "object") return undefined;
-    cur = cur[part];
-  }
-  return cur;
-}
-
-function pick(obj, paths, fallback = "Unknown") {
-  for (const path of paths) {
-    const v = getPath(obj, path);
-    if (v !== undefined && v !== null && v !== "" && !(Array.isArray(v) && !v.length)) return v;
-  }
-  return fallback;
-}
-
-function itemIdOf(item) {
-  return String(pick(item, ["item_id", "item.item_id", "id"], "") || "");
-}
-
-function mergeForDisplay(summary, detail) {
-  const combined = {};
-  if (summary && typeof summary === "object") Object.assign(combined, summary);
-  if (detail && typeof detail === "object") {
-    if (detail.item && typeof detail.item === "object") Object.assign(combined, detail.item);
-    if (detail.data && typeof detail.data === "object" && !Array.isArray(detail.data)) Object.assign(combined, detail.data);
-    Object.assign(combined, detail);
-  }
-  return combined;
-}
-
-function short(value, limit = 450) {
-  let text = typeof value === "object" ? JSON.stringify(value) : String(value ?? "Unknown");
-  text = text.replace(/\s+/g, " ").trim();
-  return text.length <= limit ? text : text.slice(0, limit - 3) + "...";
-}
-
-function formatTimestamp(value) {
-  if (!value || value === "Unknown") return "Unknown";
-  const n = Number(value);
-  if (Number.isFinite(n) && n > 1000000000) {
-    return new Date(n * 1000).toISOString().replace("T", " ").replace(".000Z", " UTC");
-  }
-  return String(value);
-}
-
-function displayFields(summary, detail) {
-  const combined = mergeForDisplay(summary, detail);
-  const itemId = itemIdOf(summary) || itemIdOf(combined) || "Unknown";
-  const price = pick(combined, ["price", "item.price", "price_with_fee", "cost", "amount"]);
-  const currency = pick(combined, ["currency", "item.currency"], "");
-
+function fields(summary,detail){
+  const c=merge(summary,detail), id=itemId(summary)||itemId(c)||"Unknown";
+  const price=pick(c,["price","item.price","price_with_fee","cost","amount"]);
+  const cur=pick(c,["currency","item.currency"],"");
   return {
-    item_id: short(itemId),
-    listing_url: /^\d+$/.test(String(itemId)) ? `https://lzt.market/${itemId}/` : "Unknown",
-    title: short(pick(combined, ["title", "item.title", "item_title", "name"])),
-    seller: short(pick(combined, ["seller.username", "seller.name", "seller_user.username", "seller_username", "username", "user.username", "user"])),
-    price: short(`${price} ${currency}`.trim()),
-    skin_count: short(pick(combined, ["skin_count", "skins_count", "fortnite_skin_count", "fortnite_skins_count", "skins.total", "item.skin_count"])),
-    email_changeable: short(pick(combined, ["change_email", "can_change_email", "email_changeable", "item.change_email", "fortnite_change_email"])),
-    level: short(pick(combined, ["level", "fortnite_level", "season_level", "account_level", "item.level"])),
-    country: short(pick(combined, ["country", "item.country", "origin_country", "account_country"])),
-    last_activity: formatTimestamp(pick(combined, ["last_activity", "fortnite_last_activity", "account_last_activity", "item.last_activity"])),
-    published: formatTimestamp(pick(combined, ["published_date", "created_at", "upload_date", "item.published_date"])),
-    vbucks: short(pick(combined, ["vbuck", "vbucks", "fortnite_vbucks", "item.vbucks"]))
+    item_id:short(id), listing_url:/^\d+$/.test(id)?`https://lzt.market/${id}/`:"Unknown",
+    title:short(pick(c,["title","item.title","item_title","name"])),
+    seller:short(pick(c,["seller.username","seller.name","seller_user.username","seller_username","username","user.username","user"])),
+    price:short(`${price} ${cur}`.trim()),
+    skin_count:short(pick(c,["skin_count","skins_count","fortnite_skin_count","fortnite_skins_count","skins.total","item.skin_count"])),
+    email_changeable:short(pick(c,["change_email","can_change_email","email_changeable","item.change_email","fortnite_change_email"])),
+    level:short(pick(c,["level","fortnite_level","season_level","account_level","item.level"])),
+    country:short(pick(c,["country","item.country","origin_country","account_country"])),
+    last_activity:fmtTime(pick(c,["last_activity","fortnite_last_activity","account_last_activity","item.last_activity"])),
+    published:fmtTime(pick(c,["published_date","created_at","upload_date","item.published_date"])),
+    vbucks:short(pick(c,["vbuck","vbucks","fortnite_vbucks","item.vbucks"]))
   };
 }
 
-async function fetchDetail(itemId, fallback) {
-  if (!/^\d+$/.test(String(itemId))) {
-    return { error: "No numeric item_id for detail fetch", summary_only: fallback };
+async function lztGet(p,params={}){
+  const k=key(); if(!k)throw new Error("Paste your LZT API key first.");
+  const base=$("apiBase").value.trim().replace(/\/+$/,"");
+  const proxy=$("proxyUrl").value.trim().replace(/\/+$/,"");
+  const direct=new URL(base+p);
+  Object.entries(params).forEach(([x,v])=>{if(v!==undefined&&v!==null&&v!=="")direct.searchParams.set(x,v);});
+  let url=direct.toString(), opts={method:"GET",headers:{Authorization:`Bearer ${k}`,Accept:"application/json"}};
+  if(proxy){
+    const u=new URL(proxy+"/proxy"); u.searchParams.set("url",direct.toString());
+    url=u.toString(); opts={method:"GET",headers:{"X-LZT-Key":k,"X-LZT-Token":k,Accept:"application/json"}};
   }
-  try {
-    return await lztGet(`/${itemId}`);
-  } catch (err) {
-    return { error: "Could not fetch detail endpoint", exception: err.message, summary_only: fallback };
-  }
+  let res;
+  try{res=await fetch(url,opts);}catch(e){throw new Error("Load failed. This is usually CORS. Add your Cloudflare Worker proxy URL, then try again.");}
+  if(res.status===401)throw new Error("401 from LZT. API key invalid/expired.");
+  if(res.status===429)throw new Error("429 from LZT. Rate limited.");
+  if(!res.ok)throw new Error(`Request failed: HTTP ${res.status}`);
+  return await res.json();
 }
 
-async function testToken() {
-  try {
-    el("tokenStatus").textContent = "Testing token...";
-    const data = await lztGet(categoryPath(), {
-      page: 1,
-      order_by: el("orderBy").value.trim(),
-      currency: el("currency").value.trim()
-    });
-    const count = extractItems(data).length;
-    el("tokenStatus").textContent = `Token works. Fetched ${count} item(s) from first page.`;
-  } catch (err) {
-    el("tokenStatus").textContent = `Token test failed: ${err.message}`;
-  }
+async function testKey(){
+  $("status").textContent="Testing key...";
+  try{
+    const data=await lztGet($("categoryPath").value.trim(),{page:1,order_by:$("orderBy").value.trim(),currency:$("currency").value.trim()});
+    $("status").textContent=`Key works. First page returned ${extractItems(data).length} item(s).`;
+  }catch(e){$("status").textContent="Key test failed: "+e.message;}
 }
 
-async function scanLzt() {
-  const maxTerms = Math.max(1, Math.min(50, Number(el("maxTerms").value || 25)));
-  const terms = loadTerms().slice(0, maxTerms);
-  const orderBy = el("orderBy").value.trim();
-  const currency = el("currency").value.trim();
-  const all = new Map();
-  const errors = [];
+async function detail(id,fallback){
+  if(!/^\d+$/.test(String(id)))return {error:"No numeric item id",summary_only:fallback};
+  try{return await lztGet(`/${id}`);}catch(e){return {error:"Detail fetch failed",exception:e.message,summary_only:fallback};}
+}
 
-  setBadge("Scanning...", "warn");
-  el("results").innerHTML = `<p>Scanning by ${terms.length} watchlist terms and newest listings. Keep this tab open.</p>`;
+async function scan(){
+  const max=Math.max(1,Math.min(50,Number($("maxTerms").value||25)));
+  const ts=terms().slice(0,max), found=new Map(), errors=[];
+  badge("Scanning...","warn");
+  $("results").innerHTML="<p class='empty'>Scanning by watchlist terms and newest listings. Keep this tab open.</p>";
 
-  for (const term of terms) {
-    try {
-      const data = await lztGet(categoryPath(), {
-        page: 1,
-        order_by: orderBy,
-        currency,
-        title: term
-      });
-      const items = extractItems(data);
-      for (const item of items) {
-        const id = itemIdOf(item);
-        if (!id) continue;
-        if (matchedTerms(item).length) all.set(id, item);
-      }
-      await sleep(450);
-    } catch (err) {
-      errors.push({ term, error: err.message });
-    }
+  for(const term of ts){
+    try{
+      const data=await lztGet($("categoryPath").value.trim(),{page:1,order_by:$("orderBy").value.trim(),currency:$("currency").value.trim(),title:term});
+      for(const item of extractItems(data)){const id=itemId(item); if(id&&matched(item).length)found.set(id,item);}
+      await sleep(400);
+    }catch(e){errors.push({term,error:e.message});}
   }
 
-  try {
-    const newest = await lztGet(categoryPath(), { page: 1, order_by: orderBy, currency });
-    for (const item of extractItems(newest)) {
-      const id = itemIdOf(item);
-      if (!id) continue;
-      if (matchedTerms(item).length) all.set(id, item);
-    }
-  } catch (err) {
-    errors.push({ term: "newest listings", error: err.message });
+  try{
+    const data=await lztGet($("categoryPath").value.trim(),{page:1,order_by:$("orderBy").value.trim(),currency:$("currency").value.trim()});
+    for(const item of extractItems(data)){const id=itemId(item); if(id&&matched(item).length)found.set(id,item);}
+  }catch(e){errors.push({term:"newest",error:e.message});}
+
+  const results=[];
+  for(const [id,item] of found.entries()){
+    const d=await detail(id,item);
+    const m=[...new Set([...matched(item),...matched(d)])].sort();
+    results.push({createdAt:new Date().toISOString(),...fields(item,d),matched_terms:m,raw:{summary:item,detail:d}});
   }
 
-  const results = [];
-  for (const [itemId, item] of all.entries()) {
-    const detail = await fetchDetail(itemId, item);
-    const matched = [...new Set([...matchedTerms(item), ...matchedTerms(detail)])].sort();
-    const fields = displayFields(item, detail);
-    const caseObj = {
-      createdAt: new Date().toISOString(),
-      ...fields,
-      matched_terms: matched,
-      raw: { summary: item, detail }
-    };
-    results.push(caseObj);
-    await sleep(250);
-  }
+  const old=cases(), seen=new Set(old.map(c=>c.item_id));
+  for(const r of results)if(!seen.has(r.item_id))old.unshift(r);
+  saveCases(old);
 
-  const cases = loadCases();
-  const seen = new Set(cases.map(c => c.item_id));
-  for (const r of results) {
-    if (!seen.has(r.item_id)) cases.unshift(r);
-  }
-  saveCases(cases);
-
-  renderResults(results, errors);
+  renderResults(results,errors);
   renderCases();
 }
 
-function renderResults(results, errors = []) {
-  let html = "";
-
-  if (errors.length) {
-    html += `<pre>Some scan errors:\n${escapeHtml(JSON.stringify(errors, null, 2))}</pre>`;
-  }
-
-  if (!results.length) {
-    setBadge("0 results", "warn");
-    html += `<p>No matching listings found in this scan.</p>`;
-    el("results").innerHTML = html;
-    return;
-  }
-
-  setBadge(`${results.length} result(s)`, "ok");
-  html += results.map(renderCaseCard).join("");
-  el("results").innerHTML = html;
-}
-
-function renderCaseCard(c) {
-  return `
-    <article class="result">
-      <h3>${escapeHtml(c.title)}</h3>
-      <div class="grid">
-        <div><strong>Seller:</strong> ${escapeHtml(c.seller)}</div>
-        <div><strong>Price:</strong> ${escapeHtml(c.price)}</div>
-        <div><strong>Skin Count:</strong> ${escapeHtml(c.skin_count)}</div>
-        <div><strong>V-Bucks:</strong> ${escapeHtml(c.vbucks)}</div>
-        <div><strong>Email Changeable:</strong> ${escapeHtml(c.email_changeable)}</div>
-        <div><strong>Country:</strong> ${escapeHtml(c.country)}</div>
-        <div><strong>Level:</strong> ${escapeHtml(c.level)}</div>
-        <div><strong>Last Activity:</strong> ${escapeHtml(c.last_activity)}</div>
-      </div>
-      <p><strong>Matched:</strong> ${escapeHtml((c.matched_terms || []).join(", ") || "none")}</p>
-      <p><a href="${escapeHtml(c.listing_url)}" target="_blank" rel="noreferrer">Open listing</a></p>
-      <details>
-        <summary>Evidence report</summary>
-        <pre>${escapeHtml(buildReport(c))}</pre>
-      </details>
-    </article>
-  `;
-}
-
-function buildReport(c) {
-  const matched = (c.matched_terms || []).map(t => `• ${t}`).join("\n") || "• None";
+function report(c){
+  const m=(c.matched_terms||[]).map(x=>"• "+x).join("\\n")||"• None";
   return `🚩 Suspected Fortnite Account-Sale Violation
 
 🏷️ Title: ${c.title}
@@ -385,7 +154,7 @@ function buildReport(c) {
 💰 V-Bucks: ${c.vbucks}
 
 ⭐ Matched Rare / OG Terms:
-${matched}
+${m}
 
 📧 Email Changeable: ${c.email_changeable}
 🔢 Level / Season Level: ${c.level}
@@ -394,169 +163,39 @@ ${matched}
 🕒 Published / Uploaded: ${c.published}
 
 🆔 LZT Item ID: ${c.item_id}
-🔗 Listing URL: ${c.listing_url}
-
-Evidence:
-Generated from LZT API response in browser. Export JSON to preserve raw returned data.
-
-Recommended action:
-Review evidence, preserve screenshots/timestamps if needed, and use the official enforcement/takedown process.`;
+🔗 Listing URL: ${c.listing_url}`;
 }
 
-function fieldFromText(text, labels) {
-  const lines = text.split(/\r?\n/);
-  for (const label of labels) {
-    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const rx = new RegExp("^\\s*" + escaped + "\\s*:\\s*(.+)$", "i");
-    for (const line of lines) {
-      const match = line.match(rx);
-      if (match) return match[1].trim();
-    }
-  }
-  return "";
+function card(c,type="result"){
+  return `<article class="${type}"><h3>${esc(c.title)}</h3><div class="meta">
+  <div><strong>Seller:</strong> ${esc(c.seller)}</div><div><strong>Price:</strong> ${esc(c.price)}</div>
+  <div><strong>Skin Count:</strong> ${esc(c.skin_count)}</div><div><strong>Email:</strong> ${esc(c.email_changeable)}</div>
+  <div><strong>Country:</strong> ${esc(c.country)}</div><div><strong>Level:</strong> ${esc(c.level)}</div>
+  </div><p><strong>Matched:</strong> ${esc((c.matched_terms||[]).join(", "))}</p>
+  <p><a href="${esc(c.listing_url)}" target="_blank" rel="noreferrer">Open listing</a></p>
+  <details><summary>Evidence report</summary><pre>${esc(report(c))}</pre></details></article>`;
 }
 
-function manualScan() {
-  const text = el("manualInput").value.trim();
-  if (!text) return;
-  const url = (text.match(/https?:\/\/[^\s)]+/i) || [""])[0];
-  const itemMatch = url.match(/lzt\.market\/(\d+)/i);
-  const c = {
-    createdAt: new Date().toISOString(),
-    item_id: itemMatch ? itemMatch[1] : "Unknown",
-    listing_url: url || "Unknown",
-    title: fieldFromText(text, ["Title", "Listing Title", "Name"]) || "Unknown",
-    seller: fieldFromText(text, ["Seller", "Username", "User"]) || "Unknown",
-    price: fieldFromText(text, ["Price", "Listed Price", "Cost"]) || "Unknown",
-    skin_count: fieldFromText(text, ["Skin Count", "Skins"]) || ((text.match(/\b(\d+)\s*skins?\b/i) || [])[1] ?? "Unknown"),
-    email_changeable: fieldFromText(text, ["Email Changeable", "Email", "Change Email"]) || "Unknown",
-    level: fieldFromText(text, ["Level", "Season Level", "Account Level"]) || "Unknown",
-    country: fieldFromText(text, ["Country", "Region"]) || "Unknown",
-    last_activity: fieldFromText(text, ["Last Activity", "Last Login", "Activity"]) || "Unknown",
-    published: "Unknown",
-    vbucks: fieldFromText(text, ["VB", "V-Bucks", "Vbucks", "VBucks"]) || "Unknown",
-    matched_terms: matchedTerms(text),
-    raw: { pasted_text: text }
-  };
-  saveCases([c, ...loadCases()]);
-  renderResults([c], []);
-  renderCases();
+function renderResults(results,errors=[]){
+  let html=errors.length?`<pre>Errors:\\n${esc(JSON.stringify(errors,null,2))}</pre>`:"";
+  if(!results.length){badge("0 results","warn");html+="<p class='empty'>No matches found.</p>";}
+  else{badge(`${results.length} result(s)`,"ok");html+=results.map(c=>card(c,"result")).join("");}
+  $("results").innerHTML=html;
 }
 
-function renderCases() {
-  const cases = loadCases();
-  const box = el("cases");
-  if (!cases.length) {
-    box.innerHTML = `<p>No saved cases yet.</p>`;
-    return;
-  }
-  box.innerHTML = cases.slice(0, 100).map(c => `
-    <article class="case">
-      <h3>${escapeHtml(c.title)}</h3>
-      <div class="grid">
-        <div><strong>Item ID:</strong> ${escapeHtml(c.item_id)}</div>
-        <div><strong>Seller:</strong> ${escapeHtml(c.seller)}</div>
-        <div><strong>Price:</strong> ${escapeHtml(c.price)}</div>
-        <div><strong>Country:</strong> ${escapeHtml(c.country)}</div>
-      </div>
-      <p><strong>Matched:</strong> ${escapeHtml((c.matched_terms || []).join(", "))}</p>
-      <p><a href="${escapeHtml(c.listing_url)}" target="_blank" rel="noreferrer">Open listing</a></p>
-      <details>
-        <summary>Evidence report</summary>
-        <pre>${escapeHtml(buildReport(c))}</pre>
-      </details>
-    </article>
-  `).join("");
+function renderCases(){
+  const cs=cases();
+  $("casesBox").innerHTML=cs.length?cs.slice(0,100).map(c=>card(c,"case")).join(""):"<p class='empty'>No saved cases yet.</p>";
 }
 
-function download(filename, text, type = "text/plain") {
-  const blob = new Blob([text], { type });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+function download(name,text,type){const b=new Blob([text],{type});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
 
-function exportJson() {
-  download("lzt-fortnite-review-cases.json", JSON.stringify(loadCases(), null, 2), "application/json");
-}
-
-function csvCell(value) {
-  const s = Array.isArray(value) ? value.join("; ") : String(value ?? "");
-  return `"${s.replace(/"/g, '""')}"`;
-}
-
-function exportCsv() {
-  const cases = loadCases();
-  const headers = ["createdAt", "item_id", "title", "seller", "price", "skin_count", "email_changeable", "country", "level", "last_activity", "published", "listing_url", "matched_terms"];
-  const rows = [
-    headers.join(","),
-    ...cases.map(c => headers.map(h => csvCell(c[h])).join(","))
-  ];
-  download("lzt-fortnite-review-cases.csv", rows.join("\n"), "text/csv");
-}
-
-function setBadge(text, status) {
-  el("resultBadge").textContent = text;
-  el("resultBadge").className = `badge ${status || ""}`;
-}
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function applyTheme() {
-  const theme = localStorage.getItem(STORAGE_KEYS.theme);
-  document.body.classList.toggle("light", theme === "light");
-}
-
-function bindEvents() {
-  el("themeToggle").addEventListener("click", () => {
-    const next = document.body.classList.contains("light") ? "dark" : "light";
-    localStorage.setItem(STORAGE_KEYS.theme, next);
-    applyTheme();
-  });
-
-  el("clearTokenBtn").addEventListener("click", () => {
-    sessionToken = "";
-    el("apiToken").value = "";
-    el("tokenStatus").textContent = "Token cleared from this tab.";
-  });
-
-  el("testTokenBtn").addEventListener("click", testToken);
-  el("scanBtn").addEventListener("click", scanLzt);
-  el("manualScanBtn").addEventListener("click", manualScan);
-
-  el("addTermBtn").addEventListener("click", () => {
-    const term = el("newTerm").value.trim().toLowerCase();
-    if (!term) return;
-    saveTerms([...loadTerms(), term]);
-    el("newTerm").value = "";
-    renderWatchlist();
-  });
-
-  el("newTerm").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") el("addTermBtn").click();
-  });
-
-  el("resetWatchlist").addEventListener("click", () => {
-    saveTerms(DEFAULT_TERMS);
-    renderWatchlist();
-  });
-
-  el("exportJsonBtn").addEventListener("click", exportJson);
-  el("exportCsvBtn").addEventListener("click", exportCsv);
-  el("clearCasesBtn").addEventListener("click", () => {
-    if (confirm("Clear saved cases from this browser?")) {
-      saveCases([]);
-      renderCases();
-    }
-  });
-}
-
-applyTheme();
-renderWatchlist();
-renderCases();
-bindEvents();
+$("testBtn").onclick=testKey;
+$("scanBtn").onclick=scan;
+$("clearTokenBtn").onclick=()=>{$("apiToken").value="";sessionKey="";$("status").textContent="API key cleared from this tab.";};
+$("addTermBtn").onclick=()=>{const t=$("newTerm").value.trim().toLowerCase();if(t){saveTerms([...terms(),t]);$("newTerm").value="";renderTerms();}};
+$("newTerm").onkeydown=e=>{if(e.key==="Enter")$("addTermBtn").click();};
+$("resetTermsBtn").onclick=()=>{saveTerms(DEFAULT_TERMS);renderTerms();};
+$("exportJsonBtn").onclick=()=>download("wrota-lzt-cases.json",JSON.stringify(cases(),null,2),"application/json");
+$("clearCasesBtn").onclick=()=>{if(confirm("Clear saved cases?")){saveCases([]);renderCases();}};
+renderTerms(); renderCases();

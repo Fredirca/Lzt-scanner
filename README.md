@@ -1,54 +1,43 @@
-# LZT Fortnite Review Scanner — GitHub Pages Token-Each-Visit Version
+# Wrota LZT Checker
 
-This is a static GitHub Pages app.
+A GitHub Pages-ready static web app for private on-demand LZT Fortnite review checks.
 
-It lets you:
-- paste your LZT API token each time you open the site
-- click **Scan LZT Now**
-- search the Fortnite category by rare/OG watchlist terms
-- save cases in browser localStorage
-- export JSON/CSV evidence
-- scan pasted listing text manually
+## Files to upload to GitHub Pages
 
-## Important security note
+Upload these to the root of your repo:
 
-This version does **not** have a backend.
+- `index.html`
+- `styles.css`
+- `app.js`
+- `.nojekyll`
+- `404.html`
+- `README.md`
 
-Your token is:
-- typed into the page each visit
-- kept only in page memory/session
-- not stored in localStorage
-- not included in exports
+Do not upload the ZIP itself.
 
-But browser requests still include your token in request headers. Anyone with access to your device/browser DevTools while scanning could see it.
+## How it works
 
-For stronger security, use a backend/proxy. For convenience on GitHub Pages, this token-each-visit version is the simplest.
+- Paste your LZT API key each visit.
+- Click **Test key**.
+- Click **Scan now**.
+- Cases are saved in your browser localStorage.
+- Export saved evidence as JSON.
 
-## Deploy to GitHub Pages
+The API key is not saved by the site.
 
-1. Create a GitHub repo.
-2. Upload:
-   - `index.html`
-   - `styles.css`
-   - `app.js`
-   - `README.md`
-3. Go to repo **Settings → Pages**.
-4. Source: **Deploy from a branch**
-5. Branch: `main`
-6. Folder: `/root`
-7. Save.
+## If you get “Load failed”
 
-## How to use
+That is usually CORS. Use the included `cloudflare-worker.js`:
 
-1. Open the GitHub Pages site.
-2. Paste your LZT API token.
-3. Click **Test Token**.
-4. Click **Scan LZT Now**.
-5. Export JSON/CSV when needed.
+1. Go to Cloudflare Workers.
+2. Create a Worker.
+3. Paste `cloudflare-worker.js`.
+4. Deploy.
+5. Copy the Worker URL.
+6. Paste it into **Optional Cloudflare Worker proxy URL** on the site.
+7. Test again.
 
-## Watchlist
-
-Default OR-match watchlist:
+## Default watchlist
 
 - OG Renegade Raider
 - Renegade Raider
@@ -65,5 +54,3 @@ Default OR-match watchlist:
 - Raider's Revenge
 - Raiders Revenge
 - Raider Revenge
-
-You can add/remove watchlist terms in the UI.

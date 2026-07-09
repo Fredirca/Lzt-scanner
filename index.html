@@ -1,98 +1,142 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>LZT Fortnite Review Scanner</title>
-  <link rel="stylesheet" href="styles.css" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Wrota LZT Checker</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <h1>LZT Fortnite Review Scanner</h1>
-      <p>Static GitHub Pages app. Enter your token each visit, scan on demand, keep reports in your browser.</p>
-    </div>
-    <button id="themeToggle" class="ghost">Toggle Theme</button>
-  </header>
+  <div class="glow glow-a"></div>
+  <div class="glow glow-b"></div>
 
-  <main class="layout">
-    <section class="card wide warning">
-      <h2>Security note</h2>
-      <p>
-        This version has no backend. Your API token is typed into the page and used directly by your browser.
-        It is not saved to localStorage, not written to exported files, and is cleared when you reload/close the tab.
-        Anyone with access to your device/browser DevTools while scanning could still see requests.
-      </p>
-    </section>
-
-    <section class="card">
-      <h2>1. API token for this session</h2>
-      <input id="apiToken" type="password" autocomplete="off" placeholder="Paste LZT API token here each visit" />
-      <div class="actions">
-        <button id="clearTokenBtn" class="secondary">Clear Token</button>
-        <button id="testTokenBtn" class="secondary">Test Token</button>
+  <main class="wrap">
+    <nav class="nav">
+      <div class="brand">
+        <div class="logo">W</div>
+        <div>
+          <strong>Wrota LZT Checker</strong>
+          <span>private review scanner</span>
+        </div>
       </div>
-      <p class="hint" id="tokenStatus">Token not tested.</p>
+      <div class="nav-links">
+        <a href="#scanner">Scanner</a>
+        <a href="#watchlist">Watchlist</a>
+        <a href="#cases">Cases</a>
+      </div>
+    </nav>
+
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">GitHub Pages + optional CORS proxy</p>
+        <h1>Wrota LZT Checker</h1>
+        <p class="sub">
+          Enter your LZT API key each visit, scan on demand, and generate clean private evidence reports.
+        </p>
+        <div class="hero-actions">
+          <a class="button" href="#scanner">Start scanning</a>
+          <a class="button secondary" href="#cases">View saved cases</a>
+        </div>
+      </div>
+
+      <div class="hero-panel">
+        <div class="panel-row">
+          <span class="dot ok"></span>
+          <span>Read-only checks</span>
+        </div>
+        <div class="panel-row">
+          <span class="dot warn"></span>
+          <span>API key not saved</span>
+        </div>
+        <div class="panel-row">
+          <span class="dot blue"></span>
+          <span>JSON evidence export</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="notice">
+      <strong>Heads up:</strong>
+      Direct browser calls may fail with CORS. If you see “Load failed”, deploy the included
+      <code>cloudflare-worker.js</code>, then paste the Worker URL below.
     </section>
 
-    <section class="card">
-      <div class="section-title">
-        <h2>2. Watchlist</h2>
-        <button id="resetWatchlist" class="ghost small">Reset</button>
+    <section id="scanner" class="grid">
+      <div class="card glass">
+        <div class="card-title">
+          <h2>Session access</h2>
+          <span class="pill">not stored</span>
+        </div>
+
+        <label>LZT API key</label>
+        <input id="apiToken" type="password" autocomplete="off" placeholder="Paste API key each visit">
+
+        <label>Optional Cloudflare Worker proxy URL</label>
+        <input id="proxyUrl" placeholder="https://your-worker.yourname.workers.dev">
+
+        <div class="actions">
+          <button id="testBtn">Test key</button>
+          <button id="scanBtn" class="secondary">Scan now</button>
+          <button id="clearTokenBtn" class="ghost">Clear key</button>
+        </div>
+
+        <p id="status" class="status">Not tested.</p>
       </div>
-      <div id="watchlist"></div>
-      <div class="inline-form">
-        <input id="newTerm" type="text" placeholder="Add term, e.g. og black knight" />
-        <button id="addTermBtn" class="secondary">Add</button>
+
+      <div id="watchlist" class="card glass">
+        <div class="card-title">
+          <h2>Rare watchlist</h2>
+          <button id="resetTermsBtn" class="ghost small">Reset</button>
+        </div>
+
+        <div id="watchlistBox" class="chips"></div>
+
+        <div class="add">
+          <input id="newTerm" placeholder="Add term, e.g. og black knight">
+          <button id="addTermBtn" class="secondary">Add</button>
+        </div>
       </div>
     </section>
 
-    <section class="card">
-      <h2>3. Scan settings</h2>
-      <label>API Base</label>
-      <input id="apiBase" value="https://prod-api.lzt.market" />
-      <label>Category path</label>
-      <input id="categoryPath" value="/fortnite" />
-      <label>Sort</label>
-      <input id="orderBy" value="pdate_to_down_upload" />
-      <label>Currency</label>
-      <input id="currency" value="usd" />
-      <label>Max terms per scan</label>
-      <input id="maxTerms" type="number" min="1" max="50" value="25" />
-      <p class="hint">The app searches each watchlist term by title and also checks newest Fortnite listings.</p>
-    </section>
+    <section class="card glass">
+      <div class="card-title">
+        <h2>Scan settings</h2>
+        <span class="pill">editable</span>
+      </div>
 
-    <section class="card">
-      <h2>4. Manual listing scan</h2>
-      <textarea id="manualInput" placeholder="Optional: paste a listing here to format a report without using the API."></textarea>
-      <div class="actions">
-        <button id="manualScanBtn" class="secondary">Scan Pasted Text</button>
+      <div class="settings">
+        <label>API base<input id="apiBase" value="https://prod-api.lzt.market"></label>
+        <label>Category path<input id="categoryPath" value="/fortnite"></label>
+        <label>Sort<input id="orderBy" value="pdate_to_down_upload"></label>
+        <label>Currency<input id="currency" value="usd"></label>
+        <label>Max terms<input id="maxTerms" type="number" value="25" min="1" max="50"></label>
       </div>
     </section>
 
-    <section class="card wide">
-      <div class="section-title">
-        <h2>Scan results</h2>
-        <span id="resultBadge" class="badge">No scan yet</span>
+    <section class="card glass">
+      <div class="card-title">
+        <h2>Results</h2>
+        <span id="badge" class="badge">No scan yet</span>
       </div>
-      <div class="actions">
-        <button id="scanBtn">Scan LZT Now</button>
-        <button id="exportJsonBtn" class="secondary">Export Cases JSON</button>
-        <button id="exportCsvBtn" class="secondary">Export Cases CSV</button>
-        <button id="clearCasesBtn" class="danger">Clear Saved Cases</button>
-      </div>
-      <div id="results"></div>
+      <div id="results" class="empty">Run a scan to see matching listings here.</div>
     </section>
 
-    <section class="card wide">
-      <h2>Saved cases</h2>
-      <div id="cases"></div>
+    <section id="cases" class="card glass">
+      <div class="card-title">
+        <h2>Saved cases</h2>
+        <div class="actions compact">
+          <button id="exportJsonBtn" class="secondary small">Export JSON</button>
+          <button id="clearCasesBtn" class="danger small">Clear</button>
+        </div>
+      </div>
+      <div id="casesBox" class="empty">No saved cases yet.</div>
     </section>
+
+    <footer>
+      <span>Wrota LZT Checker</span>
+      <span>Use neutral language like “suspected account-sale violation” until reviewed.</span>
+    </footer>
   </main>
-
-  <footer>
-    <p>Use neutral wording like “suspected account-sale violation” until reviewed.</p>
-  </footer>
 
   <script src="app.js"></script>
 </body>
