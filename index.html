@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LZT Fortnite Review Scanner</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>LZT Fortnite Review Scanner</h1>
+      <p>Static GitHub Pages app. Enter your token each visit, scan on demand, keep reports in your browser.</p>
+    </div>
+    <button id="themeToggle" class="ghost">Toggle Theme</button>
+  </header>
+
+  <main class="layout">
+    <section class="card wide warning">
+      <h2>Security note</h2>
+      <p>
+        This version has no backend. Your API token is typed into the page and used directly by your browser.
+        It is not saved to localStorage, not written to exported files, and is cleared when you reload/close the tab.
+        Anyone with access to your device/browser DevTools while scanning could still see requests.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>1. API token for this session</h2>
+      <input id="apiToken" type="password" autocomplete="off" placeholder="Paste LZT API token here each visit" />
+      <div class="actions">
+        <button id="clearTokenBtn" class="secondary">Clear Token</button>
+        <button id="testTokenBtn" class="secondary">Test Token</button>
+      </div>
+      <p class="hint" id="tokenStatus">Token not tested.</p>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <h2>2. Watchlist</h2>
+        <button id="resetWatchlist" class="ghost small">Reset</button>
+      </div>
+      <div id="watchlist"></div>
+      <div class="inline-form">
+        <input id="newTerm" type="text" placeholder="Add term, e.g. og black knight" />
+        <button id="addTermBtn" class="secondary">Add</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>3. Scan settings</h2>
+      <label>API Base</label>
+      <input id="apiBase" value="https://prod-api.lzt.market" />
+      <label>Category path</label>
+      <input id="categoryPath" value="/fortnite" />
+      <label>Sort</label>
+      <input id="orderBy" value="pdate_to_down_upload" />
+      <label>Currency</label>
+      <input id="currency" value="usd" />
+      <label>Max terms per scan</label>
+      <input id="maxTerms" type="number" min="1" max="50" value="25" />
+      <p class="hint">The app searches each watchlist term by title and also checks newest Fortnite listings.</p>
+    </section>
+
+    <section class="card">
+      <h2>4. Manual listing scan</h2>
+      <textarea id="manualInput" placeholder="Optional: paste a listing here to format a report without using the API."></textarea>
+      <div class="actions">
+        <button id="manualScanBtn" class="secondary">Scan Pasted Text</button>
+      </div>
+    </section>
+
+    <section class="card wide">
+      <div class="section-title">
+        <h2>Scan results</h2>
+        <span id="resultBadge" class="badge">No scan yet</span>
+      </div>
+      <div class="actions">
+        <button id="scanBtn">Scan LZT Now</button>
+        <button id="exportJsonBtn" class="secondary">Export Cases JSON</button>
+        <button id="exportCsvBtn" class="secondary">Export Cases CSV</button>
+        <button id="clearCasesBtn" class="danger">Clear Saved Cases</button>
+      </div>
+      <div id="results"></div>
+    </section>
+
+    <section class="card wide">
+      <h2>Saved cases</h2>
+      <div id="cases"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Use neutral wording like “suspected account-sale violation” until reviewed.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

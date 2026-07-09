@@ -1,41 +1,69 @@
-# Lzt-scanner
+# LZT Fortnite Review Scanner — GitHub Pages Token-Each-Visit Version
 
-A scanner tool for [describe your project purpose here].
+This is a static GitHub Pages app.
 
-## Features
+It lets you:
+- paste your LZT API token each time you open the site
+- click **Scan LZT Now**
+- search the Fortnite category by rare/OG watchlist terms
+- save cases in browser localStorage
+- export JSON/CSV evidence
+- scan pasted listing text manually
 
-- [Feature 1]
-- [Feature 2]
-- [Feature 3]
+## Important security note
 
-## Installation
+This version does **not** have a backend.
 
-```bash
-# Installation instructions here
-```
+Your token is:
+- typed into the page each visit
+- kept only in page memory/session
+- not stored in localStorage
+- not included in exports
 
-## Usage
+But browser requests still include your token in request headers. Anyone with access to your device/browser DevTools while scanning could see it.
 
-```bash
-# Usage examples here
-```
+For stronger security, use a backend/proxy. For convenience on GitHub Pages, this token-each-visit version is the simplest.
 
-## Configuration
+## Deploy to GitHub Pages
 
-[Add configuration details if applicable]
+1. Create a GitHub repo.
+2. Upload:
+   - `index.html`
+   - `styles.css`
+   - `app.js`
+   - `README.md`
+3. Go to repo **Settings → Pages**.
+4. Source: **Deploy from a branch**
+5. Branch: `main`
+6. Folder: `/root`
+7. Save.
 
-## Requirements
+## How to use
 
-- [List dependencies and requirements]
+1. Open the GitHub Pages site.
+2. Paste your LZT API token.
+3. Click **Test Token**.
+4. Click **Scan LZT Now**.
+5. Export JSON/CSV when needed.
 
-## Contributing
+## Watchlist
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Default OR-match watchlist:
 
-## License
+- OG Renegade Raider
+- Renegade Raider
+- OG Skull Trooper
+- Skull Trooper
+- Purple Skull
+- OG Ghoul Trooper
+- Ghoul Trooper
+- Pink Ghoul
+- OG Aerial Assault
+- Aerial Assault Trooper
+- Aerial Assault
+- OG Raiders Revenge
+- Raider's Revenge
+- Raiders Revenge
+- Raider Revenge
 
-[Add your license information here]
-
-## Support
-
-For issues and questions, please open an issue on GitHub.
+You can add/remove watchlist terms in the UI.
