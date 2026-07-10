@@ -1,25 +1,41 @@
-# Wrota API Console — streamlined API-only build
+# Wrota Release v1.0.0
 
-This version removes images completely and does not scrape HTML pages.
+Dark-mode, API-only release build.
 
-## What it does
+## Scope
 
-- Uses LZT API JSON only.
-- Scans Fortnite listings with exact cosmetic filters.
-- Sends `order` as the primary API ordering parameter.
-- Keeps `order_by` as fallback.
-- Sends `fields_include=*`, `locale=en`, and `currency=usd`.
-- Merges duplicate listing IDs into one global mixed feed.
-- Keeps all matched target badges on each listing.
-- Uses API detail pass only; no page scraping.
-- Shows important fields on the card.
-- Keeps the full API JSON available under each listing.
-- Exports visible listings as JSON.
-- Hidden proxy URL; no image or Cloudflare links shown in the UI.
+This release is intentionally focused:
 
-## Deploy
+- API JSON only
+- No images
+- No HTML page scraping
+- No visible proxy field
+- One global mixed feed
+- One card per unique listing ID
+- Multiple matched target badges per listing
+- API detail pass
+- Full raw JSON available per listing
+- Export visible results as JSON
+- Saved listings stored locally in the browser
 
-Upload these files to GitHub Pages:
+## API behavior
+
+The frontend sends requests through the hidden proxy bridge so the browser does not call the API directly.
+
+Request behavior:
+
+- `Authorization: Bearer <token>` is applied by the proxy from `X-LZT-Key`
+- `order` is sent as the primary ordering parameter
+- `order_by` is kept as a compatibility fallback
+- `currency=usd`
+- `locale=en`
+- `fields_include=*`
+- 225ms request gate for the documented 300/minute limit
+- 429 retry/backoff support
+
+## Deployment
+
+Upload the root files to GitHub Pages:
 
 ```text
 index.html
@@ -28,22 +44,17 @@ styles.css
 app.js
 .nojekyll
 README.md
+CHANGELOG.md
 ```
 
-Deploy the optional Cloudflare Worker in `cloudflare-worker/` if your current proxy does not convert `X-LZT-Key` to `Authorization: Bearer <token>`.
+Deploy the optional Worker in `cloudflare-worker/` if your current proxy does not convert `X-LZT-Key` into the upstream `Authorization: Bearer <token>` header.
 
 ## Worker
 
-The worker only allows `prod-api.lzt.market` and only exposes `/proxy?url=...`.
+The included Worker only allows:
 
+```text
+prod-api.lzt.market
+```
 
-## Clean UI build
-
-This version keeps the API-only functionality but replaces the heavy CMD look with a cleaner modern dashboard:
-
-- Minimal light dashboard design
-- Clear scan setup and targets
-- Cleaner cards
-- Less visual noise
-- Raw JSON still available
-- No image code or page scraping
+It does not proxy image URLs or web pages.

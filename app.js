@@ -204,7 +204,7 @@ function card(r){
   const msg=message(r);
   return `<article class="card">
     <div class="cardhead">
-      <div><div class="cmd">C:\\WROTA\\LISTING&gt; ${esc(r.id)}</div><h3>${esc(r.title)}</h3><div class="badges">${r.labels.map(x=>`<span>${esc(x)}</span>`).join("")}</div></div>
+      <div><div class="cmd">Listing #${esc(r.id)}</div><h3>${esc(r.title)}</h3><div class="badges">${r.labels.map(x=>`<span>${esc(x)}</span>`).join("")}</div></div>
       <div class="price">${esc(price(r.price))}</div>
     </div>
     <div class="info">
@@ -229,7 +229,7 @@ function card(r){
   </article>`;
 }
 function renderStats(){const v=visible();$("statShown").textContent=v.length;$("statUnique").textContent=results.length;$("statHits").textContent=results.reduce((a,r)=>a+r.labels.length,0);$("statReq").textContent=reqCount;$("statSaved").textContent=saved.length}
-function renderFeed(){renderStats();const v=visible();const box=$("feed");if(!v.length){box.className="empty";box.innerHTML="<h3>No visible listings</h3><p>Try relaxing filters or run another scan.</p>";return}box.className=compact?"cards compact":"cards";box.innerHTML=v.map(card).join("");wire(box)}
+function renderFeed(){renderStats();const v=visible();const box=$("feed");if(!v.length){box.className="empty";box.innerHTML="<h3>No results</h3><p>Try relaxing filters or run another scan.</p>";return}box.className=compact?"cards compact":"cards";box.innerHTML=v.map(card).join("");wire(box)}
 function renderSaved(){const box=$("saved");$("statSaved").textContent=saved.length;if(!saved.length){box.className="empty small-empty";box.innerHTML="<h3>No saved listings</h3>";return}box.className="cards compact";box.innerHTML=saved.map(card).join("");wire(box)}
 function wire(root=document){
   root.querySelectorAll("[data-copy]").forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.copy);log("copied")}catch{log("copy failed")}});
@@ -264,13 +264,13 @@ async function scan(){
   }catch(e){status("ERROR");log("scan failed",{error:e.message})}
   finally{$("scanBtn").disabled=false;$("progress").classList.add("hidden")}
 }
-async function test(){try{status("TESTING");await api("/",{locale:"en"});await api("/fortnite",{page:1,order:"pdate_to_down_upload",order_by:"pdate_to_down_upload",currency:"usd",locale:"en",fields_include:"*"});status("READY");log("api ok")}catch(e){status("ERROR");log("api test failed",{error:e.message})}}
+async function test(){try{status("TESTING");await api("/",{locale:"en"});await api("/fortnite",{page:1,order:"pdate_to_down_upload",order_by:"pdate_to_down_upload",currency:"usd",locale:"en",fields_include:"*"});status("READY");log("api connection ok")}catch(e){status("ERROR");log("api test failed",{error:e.message})}}
 function exportJson(name,data){const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=name;a.click();URL.revokeObjectURL(url)}
 function bind(){
   loadCfg();try{saved=JSON.parse(localStorage.getItem("wrota.api.saved")||"[]")}catch{}
   renderTargets();renderFeed();renderSaved();
   $("showBtn").onclick=()=>{const show=$("apiKey").type==="password";$("apiKey").type=show?"text":"password";$("showBtn").textContent=show?"HIDE":"SHOW"};
-  $("testBtn").onclick=test;$("saveBtn").onclick=()=>{saveCfg();log("saved config")};$("clearBtn").onclick=()=>{$("apiKey").value="";saveCfg()};
+  $("testBtn").onclick=test;$("saveBtn").onclick=()=>{saveCfg();log("settings saved")};$("clearBtn").onclick=()=>{$("apiKey").value="";saveCfg()};
   $("scanBtn").onclick=scan;
   $("addTargetBtn").onclick=()=>{parseTargets($("targetInput").value).forEach(t=>addTarget(targets,t.param,t.id));$("targetInput").value="";renderTargets()};
   $("parseBulkBtn").onclick=()=>{parseTargets($("bulkTargets").value).forEach(t=>addTarget(targets,t.param,t.id));$("bulkTargets").value="";renderTargets()};

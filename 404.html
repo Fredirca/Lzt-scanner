@@ -3,72 +3,77 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Wrota API Console</title>
-  <link rel="stylesheet" href="styles.css?v=clean-1">
+  <title>Wrota — Release v1.0.0</title>
+  <meta name="description" content="API-only listing review console.">
+  <link rel="stylesheet" href="styles.css?v=1.0.0">
 </head>
 <body>
   <main class="app">
-    <header class="hero">
-      <div class="hero-copy">
-        <span class="kicker">API-only listing scanner</span>
-        <h1>Wrota API Console</h1>
-        <p>Clean global feed for Fortnite listings. No images, no page scraping, no clutter — just API data, matched badges, filters, and raw JSON.</p>
+    <header class="top">
+      <div class="brand">
+        <div class="mark">W</div>
+        <div>
+          <h1>Wrota</h1>
+          <p>API-only listing review console</p>
+        </div>
       </div>
-      <div class="hero-card">
-        <span id="status" class="status">READY</span>
-        <button id="scanBtn" class="primary">Scan listings</button>
+
+      <div class="release">
+        <span id="status">READY</span>
+        <small>Release v1.0.0</small>
+        <button id="scanBtn" class="primary">Scan</button>
       </div>
     </header>
 
-    <section class="quickbar">
+    <section class="auth card">
       <input id="proxyUrl" type="hidden">
-      <label class="api-key">
+      <label class="grow">
         <span>API key</span>
         <input id="apiKey" type="password" autocomplete="current-password" placeholder="Paste token">
       </label>
-      <button id="showBtn" class="ghost">Show</button>
-      <button id="testBtn" class="ghost">Test</button>
-      <button id="saveBtn" class="ghost">Save</button>
-      <button id="clearBtn" class="ghost danger">Clear</button>
+      <button id="showBtn" class="button">Show</button>
+      <button id="testBtn" class="button">Test</button>
+      <button id="saveBtn" class="button">Save</button>
+      <button id="clearBtn" class="button danger">Clear</button>
     </section>
 
-    <section class="main-grid">
-      <aside class="panel targets-panel">
-        <div class="section-head">
+    <section class="workspace">
+      <aside class="card targets-card">
+        <div class="section-title">
           <div>
-            <span class="eyebrow">01</span>
+            <span>01</span>
             <h2>Targets</h2>
           </div>
-          <button id="ogBtn" class="ghost small">OG set</button>
+          <button id="ogBtn" class="button small">Load defaults</button>
         </div>
 
         <div class="target-input">
-          <input id="targetInput" placeholder="Paste a cosmetic filter or LZT URL">
-          <button id="addTargetBtn" class="secondary">Add</button>
+          <input id="targetInput" placeholder="Paste filter, URL, or cosmetic ID">
+          <button id="addTargetBtn" class="button">Add</button>
         </div>
 
-        <details class="target-box" open>
+        <details class="target-list-box" open>
           <summary>Active targets <b id="targetCount">0</b></summary>
           <div id="targetList" class="targets"></div>
         </details>
 
-        <textarea id="bulkTargets" rows="5" placeholder="Bulk paste targets here"></textarea>
+        <textarea id="bulkTargets" rows="5" placeholder="Bulk paste targets"></textarea>
 
-        <div class="button-row">
-          <button id="parseBulkBtn" class="ghost">Parse bulk</button>
-          <button id="clearTargetsBtn" class="ghost danger">Clear targets</button>
+        <div class="actions">
+          <button id="parseBulkBtn" class="button">Parse</button>
+          <button id="clearTargetsBtn" class="button danger">Clear targets</button>
         </div>
       </aside>
 
-      <section class="panel scan-panel">
-        <div class="section-head">
+      <section class="card">
+        <div class="section-title">
           <div>
-            <span class="eyebrow">02</span>
-            <h2>Scan setup</h2>
+            <span>02</span>
+            <h2>Scan settings</h2>
           </div>
         </div>
 
-        <div class="settings-grid">
+        <div class="settings">
           <label>
             <span>Order</span>
             <select id="order">
@@ -89,19 +94,19 @@
             <input id="threads" type="number" min="1" max="8" value="3">
           </label>
           <label>
-            <span>Delay</span>
+            <span>Delay ms</span>
             <input id="delay" type="number" min="0" max="15000" value="250">
           </label>
         </div>
 
-        <div class="toggle-grid">
-          <label class="toggle"><input id="apiDetails" type="checkbox" checked><span>API detail pass</span></label>
-          <label class="toggle"><input id="includeRaw" type="checkbox" checked><span>Show raw JSON</span></label>
+        <div class="checks">
+          <label><input id="apiDetails" type="checkbox" checked> API detail pass</label>
+          <label><input id="includeRaw" type="checkbox" checked> Raw JSON</label>
         </div>
 
-        <div class="note">
-          Uses API JSON only. Sends <strong>order</strong> as primary, <strong>order_by</strong> as fallback, and keeps requests under the documented rate limit.
-        </div>
+        <p class="subtle">
+          Uses API JSON only. No images. No page scraping. Requests send <code>order</code>, with <code>order_by</code> kept as compatibility fallback.
+        </p>
       </section>
     </section>
 
@@ -113,22 +118,22 @@
       <div><span>Saved</span><b id="statSaved">0</b></div>
     </section>
 
-    <section class="panel filters">
-      <div class="section-head compact-head">
+    <section class="card">
+      <div class="section-title inline-title">
         <div>
-          <span class="eyebrow">03</span>
-          <h2>Filter feed</h2>
+          <span>03</span>
+          <h2>Results</h2>
         </div>
-        <div class="button-row no-margin">
-          <button id="resetFiltersBtn" class="ghost small">Reset</button>
-          <button id="compactBtn" class="ghost small">Compact</button>
-          <button id="copyBtn" class="ghost small">Copy visible</button>
-          <button id="exportBtn" class="ghost small">Export JSON</button>
+        <div class="actions no-margin">
+          <button id="resetFiltersBtn" class="button small">Reset</button>
+          <button id="compactBtn" class="button small">Compact</button>
+          <button id="copyBtn" class="button small">Copy visible</button>
+          <button id="exportBtn" class="button small">Export JSON</button>
         </div>
       </div>
 
-      <div class="filterrow">
-        <input id="q" placeholder="Search any listing field">
+      <div class="filters">
+        <input id="q" placeholder="Search listings">
         <input id="minPrice" type="number" min="0" placeholder="Min price">
         <input id="maxPrice" type="number" min="0" placeholder="Max price">
         <select id="sort">
@@ -139,16 +144,7 @@
           <option value="matches_desc">Most matches</option>
           <option value="skins_desc">Most skins</option>
         </select>
-        <label class="toggle inline"><input id="multiOnly" type="checkbox"><span>Multi-match</span></label>
-      </div>
-    </section>
-
-    <section class="panel feedpanel">
-      <div class="section-head">
-        <div>
-          <span class="eyebrow">04</span>
-          <h2>Global mixed feed</h2>
-        </div>
+        <label class="check-inline"><input id="multiOnly" type="checkbox"> Multi-match</label>
       </div>
 
       <div id="progress" class="progress hidden">
@@ -157,20 +153,20 @@
       </div>
 
       <div id="feed" class="empty">
-        <h3>No listings yet</h3>
-        <p>Run a scan when your targets are ready.</p>
+        <h3>No results</h3>
+        <p>Add targets and run a scan.</p>
       </div>
     </section>
 
-    <section class="panel saved-panel">
-      <div class="section-head compact-head">
+    <section class="card saved-card">
+      <div class="section-title inline-title">
         <div>
-          <span class="eyebrow">05</span>
+          <span>04</span>
           <h2>Saved</h2>
         </div>
-        <div class="button-row no-margin">
-          <button id="exportSavedBtn" class="ghost small">Export saved</button>
-          <button id="clearSavedBtn" class="ghost danger small">Clear saved</button>
+        <div class="actions no-margin">
+          <button id="exportSavedBtn" class="button small">Export saved</button>
+          <button id="clearSavedBtn" class="button small danger">Clear saved</button>
         </div>
       </div>
       <div id="saved" class="empty small-empty">
@@ -178,18 +174,23 @@
       </div>
     </section>
 
-    <section class="panel debug-panel">
-      <div class="section-head compact-head">
+    <section class="card debug-card">
+      <div class="section-title inline-title">
         <div>
-          <span class="eyebrow">06</span>
+          <span>05</span>
           <h2>Debug</h2>
         </div>
-        <button id="clearLogBtn" class="ghost small">Clear log</button>
+        <button id="clearLogBtn" class="button small">Clear</button>
       </div>
       <pre id="debugLog" class="log"></pre>
     </section>
+
+    <footer class="footer">
+      <span>Wrota Release v1.0.0</span>
+      <span>API-only · no images · no scraping</span>
+    </footer>
   </main>
 
-  <script src="app.js?v=clean-1"></script>
+  <script src="app.js?v=1.0.0"></script>
 </body>
 </html>
