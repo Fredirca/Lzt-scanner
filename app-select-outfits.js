@@ -220,6 +220,268 @@ function looksKnown(value){
   return value!==undefined && value!==null && value!=="" && value!=="Unknown";
 }
 
+
+function absolutizeImageUrl(url){
+  const raw=String(url || "").trim();
+  if(!raw)return "";
+  if(raw.startsWith("//"))return `https:${raw}`;
+  if(raw.startsWith("http://") || raw.startsWith("https://"))return raw;
+  return "";
+}
+
+function looksLikeImageUrl(url){
+  const text=String(url || "").trim();
+  if(!text)return false;
+  const lower=text.toLowerCase();
+
+  if(lower.startsWith("data:"))return false;
+  if(!lower.startsWith("http://") && !lower.startsWith("https://") && !lower.startsWith("//"))return false;
+
+  return (
+    /\.(png|jpe?g|webp|gif)(\?|#|$)/i.test(lower) ||
+    lower.includes("image") ||
+    lower.includes("img") ||
+    lower.includes("screenshot") ||
+    lower.includes("inventory") ||
+    lower.includes("checker") ||
+    lower.includes("lztcdn") ||
+    lower.includes("lolz") ||
+    lower.includes("market")
+  );
+}
+
+function imageScore(url){
+  const lower=String(url || "").toLowerCase();
+  let score=0;
+  if(lower.includes("inventory"))score+=7;
+  if(lower.includes("checker"))score+=7;
+  if(lower.includes("screenshot"))score+=4;
+  if(lower.includes("fortnite"))score+=3;
+  if(lower.includes("skin"))score+=2;
+  if(lower.includes("lzt"))score+=2;
+  if(/\.(png|jpe?g|webp)(\?|#|$)/i.test(lower))score+=2;
+  return score;
+}
+
+function extractInventoryImages(value, seen=new WeakSet(), out=[]){
+  if(value===null || value===undefined)return out;
+
+  if(typeof value==="string"){
+    const text=value;
+
+    // Direct URL strings.
+    const directMatches=text.match(/https?:\/\/[^\s"'<>\\)]+|\/\/[^\s"'<>\\)]+/g) || [];
+    for(const match of directMatches){
+      const url=absolutizeImageUrl(match.replace(/&amp;/g,"&"));
+      if(looksLikeImageUrl(url))out.push(url);
+    }
+
+    // HTML src attributes.
+    const srcMatches=[...text.matchAll(/src=["']([^"']+)["']/gi)];
+    for(const match of srcMatches){
+      const url=absolutizeImageUrl(match[1].replace(/&amp;/g,"&"));
+      if(looksLikeImageUrl(url))out.push(url);
+    }
+
+    return out;
+  }
+
+  if(typeof value!=="object")return out;
+  if(seen.has(value))return out;
+  seen.add(value);
+
+  if(Array.isArray(value)){
+    value.forEach(x=>extractInventoryImages(x,seen,out));
+    return out;
+  }
+
+  for(const [key,next] of Object.entries(value)){
+    const lowerKey=String(key).toLowerCase();
+
+    if(
+      ["image","images","img","imgs","src","url","thumbnail","thumb","preview","screenshot","screenshots","inventory","inventory_images","inventory_checker","checker","check_images"].some(k=>lowerKey.includes(k))
+    ){
+      extractInventoryImages(next,seen,out);
+    }else if(typeof next==="object"){
+      extractInventoryImages(next,seen,out);
+    }else if(typeof next==="string" && looksLikeImageUrl(next)){
+      extractInventoryImages(next,seen,out);
+    }
+  }
+
+  return out;
+}
+
+function uniqueInventoryImages(payload){
+  const urls=extractInventoryImages(payload)
+    .map(absolutizeImageUrl)
+    .filter(Boolean)
+    .filter(url=>/^https?:\/\//i.test(url));
+
+  const seen=new Set();
+  return urls
+    .sort((a,b)=>imageScore(b)-imageScore(a))
+    .filter(url=>{
+      const clean=url.split("#")[0];
+      if(seen.has(clean))return false;
+      seen.add(clean);
+      return true;
+    })
+    .slice(0,12);
+}
+
+
+async function fetchListingPageHtml(id){
+  if(!/^\d+$/.test(String(id))) return "";
+  const proxy=DEFAULT_PROXY_URL.replace(/\/+$/,"");
+  const target=`https://lzt.market/${id}/`;
+  const url=`${proxy}/proxy?url=${encodeURIComponent(target)}`;
+
+  try{
+    const response=await fetchWithTimeout(url,{
+      method:"GET",
+      headers:{
+        "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "X-LZT-Key":token()
+      }
+    },45000);
+
+    if(!response.ok) return "";
+    return await response.text();
+  }catch{
+    return "";
+  }
+}
+
+function htmlDecode(text){
+  const box=document.createElement("textarea");
+  box.innerHTML=String(text || "");
+  return box.value;
+}
+
+function extractUrlsFromCssText(text){
+  const out=[];
+  const regex=/url\((["']?)([^"')]+)\1\)/gi;
+  let match;
+  while((match=regex.exec(text))!==null){
+    out.push(match[2]);
+  }
+  return out;
+}
+
+function extractLockerImagesFromHtml(html){
+  const out=[];
+  if(!html) return out;
+
+  const decoded=htmlDecode(html);
+
+  // src, data-src, data-original, href image links
+  const attrRegex=/(?:src|data-src|data-original|data-lazy-src|data-full|data-url|href)=["']([^"']+)["']/gi;
+  let match;
+  while((match=attrRegex.exec(decoded))!==null){
+    out.push(match[1]);
+  }
+
+  // srcset links
+  const srcsetRegex=/srcset=["']([^"']+)["']/gi;
+  while((match=srcsetRegex.exec(decoded))!==null){
+    const parts=match[1].split(",").map(x=>x.trim().split(/\s+/)[0]).filter(Boolean);
+    out.push(...parts);
+  }
+
+  // background-image url(...)
+  out.push(...extractUrlsFromCssText(decoded));
+
+  // Raw CDN image URLs inside JSON/script payloads.
+  const rawUrlRegex=/https?:\\?\/\\?\/[^"'<>\s)]+?\.(?:png|jpe?g|webp|gif)(?:\?[^"'<>\s)]*)?/gi;
+  while((match=rawUrlRegex.exec(decoded))!==null){
+    out.push(match[0].replace(/\\\//g,"/"));
+  }
+
+  return out
+    .map(url=>htmlDecode(url).replace(/\\u002F/g,"/").replace(/\\\//g,"/"))
+    .map(absolutizeImageUrl)
+    .filter(Boolean)
+    .filter(looksLikeLockerImageUrl)
+    .filter(uniqueByValue)
+    .sort((a,b)=>lockerImageScore(b)-lockerImageScore(a))
+    .slice(0,24);
+}
+
+function uniqueByValue(value,index,array){
+  const clean=String(value).split("#")[0];
+  return array.findIndex(x=>String(x).split("#")[0]===clean)===index;
+}
+
+function looksLikeLockerImageUrl(url){
+  const lower=String(url||"").toLowerCase();
+  if(!looksLikeImageUrl(url)) return false; // replaced below
+  return (
+    lower.includes("lzt") ||
+    lower.includes("lolz") ||
+    lower.includes("market") ||
+    lower.includes("cdn") ||
+    lower.includes("image") ||
+    lower.includes("img") ||
+    lower.includes("fortnite") ||
+    lower.includes("inventory") ||
+    lower.includes("locker") ||
+    lower.includes("skin") ||
+    lower.includes("item") ||
+    /\.(png|jpe?g|webp)(\?|#|$)/i.test(lower)
+  );
+}
+
+function lockerImageScore(url){
+  const lower=String(url||"").toLowerCase();
+  let score=imageScore(url);
+  if(lower.includes("locker"))score+=12;
+  if(lower.includes("inventory"))score+=10;
+  if(lower.includes("fortnite"))score+=8;
+  if(lower.includes("skin"))score+=5;
+  if(lower.includes("item"))score+=3;
+  if(lower.includes("avatar"))score-=12;
+  if(lower.includes("profile"))score-=8;
+  if(lower.includes("smilie"))score-=20;
+  if(lower.includes("emoji"))score-=20;
+  if(lower.includes("logo"))score-=20;
+  return score;
+}
+
+function combineImageLists(...lists){
+  const out=[];
+  for(const list of lists){
+    if(!Array.isArray(list)) continue;
+    for(const url of list){
+      const clean=absolutizeImageUrl(url);
+      if(!clean) continue;
+      if(out.some(x=>String(x).split("#")[0]===String(clean).split("#")[0])) continue;
+      out.push(clean);
+    }
+  }
+  return out.sort((a,b)=>lockerImageScore(b)-lockerImageScore(a)).slice(0,24);
+}
+
+function renderInventoryImages(caseItem){
+  const enabled=$("showInventoryImages") ? $("showInventoryImages").checked : true;
+  const images=Array.isArray(caseItem.image_urls) ? caseItem.image_urls : [];
+  if(!enabled || !images.length){
+    return `<div class="inventory-empty">No locker images found from the listing page/details.</div>`;
+  }
+
+  return `<div class="inventory-gallery">
+    ${images.map((url,index)=>`
+      <a class="inventory-thumb" href="${esc(url)}" target="_blank" rel="noopener" title="Open inventory image ${index+1}">
+        <img src="${esc(url)}" loading="lazy" alt="Inventory checker image ${index+1}" referrerpolicy="no-referrer">
+      </a>
+    `).join("")}
+  </div>
+  <div class="image-actions">
+    <button class="ghost small" type="button" data-copy-text="${esc(images.join("\\n"))}">Copy image links</button>
+    <span>${images.length} image${images.length===1?"":"s"} found</span>
+  </div>`;
+}
+
 function extractListingFields(summary, detailData, matchedFilters=[]){
   const merged=mergeListingData(summary,detailData);
   const combined=merged.combined;
@@ -268,6 +530,14 @@ function extractListingFields(summary, detailData, matchedFilters=[]){
     summary?.last_activity || summary?.last_activity_at || summary?.last_seen || summary?.last_login ||
     firstDeep({summary,detailData},["last_activity","last_activity_at","last_seen","last_login","last_activity_date","lastVisitDate"],"Unknown");
 
+  const uploadedAt =
+    summary?.uploaded_at || summary?.upload_date || summary?.pdate_upload || summary?.pdate ||
+    firstDeep({summary,detailData},["uploaded_at","upload_date","pdate_upload","published_upload","created_upload"],"Unknown");
+
+  const listedAt =
+    summary?.published_at || summary?.created_at || summary?.pdate || summary?.date ||
+    firstDeep({summary,detailData},["published_at","created_at","pdate","date","published_date"],"Unknown");
+
   let vbucks =
     summary?.vbucks ?? summary?.v_bucks ?? summary?.bucks ??
     firstDeep({summary,detailData},["vbucks","v_bucks","bucks","vb"],"");
@@ -280,6 +550,7 @@ function extractListingFields(summary, detailData, matchedFilters=[]){
     summary?.platform || firstDeep({summary,detailData},["platform","platforms"],"");
 
   const link=id ? `https://lzt.market/${id}/` : "";
+  const inventoryImages=uniqueInventoryImages({summary,detailData});
 
   return {
     createdAt:new Date().toISOString(),
@@ -294,9 +565,12 @@ function extractListingFields(summary, detailData, matchedFilters=[]){
     season_level:looksKnown(seasonLevel) ? seasonLevel : "Unknown",
     country:looksKnown(country) ? country : "Unknown",
     last_activity:looksKnown(lastActivity) ? lastActivity : "Unknown",
+    uploaded_at:looksKnown(uploadedAt) ? uploadedAt : "Unknown",
+    listed_at:looksKnown(listedAt) ? listedAt : "Unknown",
     vbucks:looksKnown(vbucks) ? vbucks : "",
     platform:looksKnown(platform) ? platform : "",
     url:link,
+    image_urls:inventoryImages,
     matched_filters:Array.isArray(matchedFilters)?matchedFilters:[String(matchedFilters)],
     note:"Enriched from listing search/detail data"
   };
@@ -348,9 +622,12 @@ function compactCase(item){
     season_level:item.season_level??item.level??item.account_level??"Unknown",
     country:item.country||item.country_code||item.origin||"Unknown",
     last_activity:item.last_activity||item.last_activity_at||item.last_seen||item.last_login||"Unknown",
+    uploaded_at:item.uploaded_at||item.upload_date||item.pdate_upload||item.pdate||"Unknown",
+    listed_at:item.listed_at||item.published_at||item.created_at||item.pdate||"Unknown",
     vbucks:item.vbucks??item.v_bucks??item.bucks??"",
     platform:item.platform||"",
     url:id?`https://lzt.market/${id}/`:"",
+    image_urls:Array.isArray(item.image_urls)?item.image_urls.slice(0,12):[],
     matched_filters:Array.isArray(filters)?filters:[String(filters)],
     note:item.note||"Matched by selected cosmetic filter"
   };
@@ -426,7 +703,7 @@ function extractItems(data){
   return out;
 }
 function paramsForCosmetic(filter,page){
-  const params={page,order_by:"pdate_to_down_upload",currency:"usd"};
+  const params={page,order_by:marketOrderValue(),currency:"usd"};
   params[filter.param]=filter.id;
   return filterParamsForApi(params);
 }
@@ -444,6 +721,57 @@ function progress(done,total,label){
 }
 
 let currentViewMode="cards";
+
+
+function dateValue(value){
+  if(value === undefined || value === null || value === "" || value === "Unknown") return null;
+  if(typeof value === "number"){
+    const ms = value > 100000000000 ? value : value * 1000;
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const text=String(value);
+  const yyyy=text.match(/\d{4}-\d{2}-\d{2}/);
+  if(yyyy){
+    const d=new Date(`${yyyy[0]}T00:00:00`);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d=new Date(text);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function inputDateValue(id){
+  const raw=$(id)?.value || "";
+  if(!raw) return null;
+  const d=new Date(`${raw}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function startOfToday(){
+  const d=new Date();
+  d.setHours(0,0,0,0);
+  return d;
+}
+
+function daysAgo(days){
+  const d=startOfToday();
+  d.setDate(d.getDate()-days);
+  return d;
+}
+
+function dateCompareValue(item,key){
+  const d=dateValue(item?.[key]);
+  return d ? d.getTime() : -Infinity;
+}
+
+function niceDate(value){
+  const d=dateValue(value);
+  return d ? d.toISOString().slice(0,10) : cleanDate(value);
+}
+
+function marketOrderValue(){
+  return $("marketOrder")?.value || "pdate_to_down_upload";
+}
 
 function numericValue(value){
   const n=Number(value);
@@ -473,13 +801,20 @@ function filterState(){
     seller: lower($("sellerFilter")?.value || "").trim(),
     country: lower($("countryFilter")?.value || "").trim(),
     email: $("emailFilter")?.value || "",
-    sort: $("sortFilter")?.value || "newest",
+    sort: $("sortFilter")?.value || "market",
+    marketOrder: $("marketOrder")?.value || "pdate_to_down_upload",
+    quickOrder: $("quickOrder")?.value || "",
+    uploadedAfter: inputDateValue("uploadedAfter"),
+    uploadedBefore: inputDateValue("uploadedBefore"),
+    activityAfter: inputDateValue("activityAfter"),
+    activityBefore: inputDateValue("activityBefore"),
     includeTerms: splitTerms($("includeTerms")?.value || ""),
     excludeTerms: splitTerms($("excludeTerms")?.value || ""),
     hideUnknownPrice: Boolean($("hideUnknownPrice")?.checked),
     hideUnknownSeller: Boolean($("hideUnknownSeller")?.checked),
     hideUnknownCountry: Boolean($("hideUnknownCountry")?.checked),
-    onlyFullInfo: Boolean($("onlyFullInfo")?.checked)
+    onlyFullInfo: Boolean($("onlyFullInfo")?.checked),
+    hasImagesOnly: Boolean($("hasImagesOnly")?.checked)
   };
 }
 
@@ -542,6 +877,28 @@ function passesFilters(item,state=filterState()){
 
   if(!emailMatches(item.email_changeable,state.email)) return false;
 
+  const uploaded=dateValue(item.uploaded_at || item.listed_at);
+  const activity=dateValue(item.last_activity);
+
+  if(state.uploadedAfter && (!uploaded || uploaded < state.uploadedAfter)) return false;
+  if(state.uploadedBefore && (!uploaded || uploaded > state.uploadedBefore)) return false;
+  if(state.activityAfter && (!activity || activity < state.activityAfter)) return false;
+  if(state.activityBefore && (!activity || activity > state.activityBefore)) return false;
+
+  if(state.quickOrder==="today"){
+    const today=startOfToday();
+    if(!uploaded || uploaded < today) return false;
+  }
+  if(state.quickOrder==="week"){
+    const week=daysAgo(7);
+    if(!uploaded || uploaded < week) return false;
+  }
+  if(state.quickOrder==="active30"){
+    const active=daysAgo(30);
+    if(!activity || activity < active) return false;
+  }
+  if(state.quickOrder==="has_price" && price===null) return false;
+
   if(state.includeTerms.length && !state.includeTerms.every(term=>text.includes(term))) return false;
   if(state.excludeTerms.length && state.excludeTerms.some(term=>text.includes(term))) return false;
 
@@ -552,6 +909,8 @@ function passesFilters(item,state=filterState()){
     if(isUnknown(item.skin_count) || isUnknown(item.seller) || isUnknown(item.price) || isUnknown(item.country) || isUnknown(item.last_activity)) return false;
   }
 
+  if(state.hasImagesOnly && (!Array.isArray(item.image_urls) || !item.image_urls.length)) return false;
+
   return true;
 }
 
@@ -559,6 +918,10 @@ function sortResults(list,state=filterState()){
   const copy=list.slice();
   const num=(item,key)=>fieldNumber(item,key) ?? -Infinity;
 
+  if(state.sort==="uploaded_desc") copy.sort((a,b)=>dateCompareValue(b,"uploaded_at")-dateCompareValue(a,"uploaded_at"));
+  if(state.sort==="uploaded_asc") copy.sort((a,b)=>dateCompareValue(a,"uploaded_at")-dateCompareValue(b,"uploaded_at"));
+  if(state.sort==="listed_desc") copy.sort((a,b)=>dateCompareValue(b,"listed_at")-dateCompareValue(a,"listed_at"));
+  if(state.sort==="activity_desc") copy.sort((a,b)=>dateCompareValue(b,"last_activity")-dateCompareValue(a,"last_activity"));
   if(state.sort==="price_asc") copy.sort((a,b)=>(fieldNumber(a,"price") ?? Infinity)-(fieldNumber(b,"price") ?? Infinity));
   if(state.sort==="price_desc") copy.sort((a,b)=>num(b,"price")-num(a,"price"));
   if(state.sort==="skins_desc") copy.sort((a,b)=>num(b,"skin_count")-num(a,"skin_count"));
@@ -582,10 +945,33 @@ function filterSummaryText(){
   if(s.seller)parts.push(`seller: ${s.seller}`);
   if(s.country)parts.push(`country: ${s.country}`);
   if(s.email)parts.push(`email: ${s.email}`);
+  if(s.marketOrder)parts.push(`order: ${marketOrderLabel(s.marketOrder)}`);
+  if(s.quickOrder)parts.push(`quick: ${s.quickOrder}`);
+  if(s.uploadedAfter||s.uploadedBefore)parts.push(`uploaded ${$("uploadedAfter")?.value || "…"}–${$("uploadedBefore")?.value || "…"}`);
+  if(s.activityAfter||s.activityBefore)parts.push(`activity ${$("activityAfter")?.value || "…"}–${$("activityBefore")?.value || "…"}`);
   if(s.includeTerms.length)parts.push(`include: ${s.includeTerms.join(", ")}`);
   if(s.excludeTerms.length)parts.push(`exclude: ${s.excludeTerms.join(", ")}`);
   if(s.onlyFullInfo)parts.push("full info only");
+  if(s.hasImagesOnly)parts.push("has images");
   return parts.length ? parts.join(" · ") : "No extra filters active";
+}
+
+function marketOrderLabel(value){
+  return ({
+    pdate_to_down_upload:"newest uploaded",
+    pdate_to_up_upload:"oldest uploaded",
+    price_to_up:"cheapest first",
+    price_to_down:"highest price",
+    pdate_to_down:"newest listed",
+    pdate_to_up:"oldest listed"
+  })[value] || value;
+}
+
+function updateOrderChips(){
+  const order=marketOrderValue();
+  document.querySelectorAll("[data-order-preset]").forEach(btn=>{
+    btn.classList.toggle("active",btn.dataset.orderPreset===order);
+  });
 }
 
 function updateFilterSummary(){
@@ -593,6 +979,7 @@ function updateFilterSummary(){
   if(el) el.textContent=filterSummaryText();
 
   const note=$("resultNote");
+  updateOrderChips();
   if(note){
     const total=currentResults().length;
     const shown=visibleResults().length;
@@ -606,11 +993,13 @@ function refreshFilteredResults(){
 }
 
 function resetListingFilters(){
-  ["filterSearch","priceMin","priceMax","skinMin","skinMax","levelMin","levelMax","sellerFilter","countryFilter","includeTerms","excludeTerms"].forEach(id=>{
+  ["filterSearch","priceMin","priceMax","skinMin","skinMax","levelMin","levelMax","sellerFilter","countryFilter","includeTerms","excludeTerms","uploadedAfter","uploadedBefore","activityAfter","activityBefore"].forEach(id=>{
     if($(id)) $(id).value="";
   });
   if($("emailFilter")) $("emailFilter").value="";
-  if($("sortFilter")) $("sortFilter").value="newest";
+  if($("sortFilter")) $("sortFilter").value="market";
+  if($("marketOrder")) $("marketOrder").value="pdate_to_down_upload";
+  if($("quickOrder")) $("quickOrder").value="";
   ["hideUnknownPrice","hideUnknownSeller","hideUnknownCountry","onlyFullInfo"].forEach(id=>{
     if($(id)) $(id).checked=false;
   });
@@ -622,18 +1011,22 @@ function applyPreset(kind){
   resetListingFilters();
 
   if(kind==="fresh"){
-    if($("sortFilter")) $("sortFilter").value="newest";
+    if($("sortFilter")) $("sortFilter").value="market";
+  if($("marketOrder")) $("marketOrder").value="pdate_to_down_upload";
+  if($("quickOrder")) $("quickOrder").value="";
     if($("hideUnknownPrice")) $("hideUnknownPrice").checked=true;
   }
 
   if(kind==="budget"){
     if($("priceMax")) $("priceMax").value="250";
+    if($("marketOrder")) $("marketOrder").value="price_to_up";
     if($("sortFilter")) $("sortFilter").value="price_asc";
     if($("hideUnknownPrice")) $("hideUnknownPrice").checked=true;
   }
 
   if(kind==="premium"){
     if($("priceMin")) $("priceMin").value="250";
+    if($("marketOrder")) $("marketOrder").value="price_to_down";
     if($("sortFilter")) $("sortFilter").value="price_desc";
   }
 
@@ -649,13 +1042,17 @@ function filterParamsForApi(params){
   if(state.priceMax!==null) params.pmax=state.priceMax;
   if(state.search) params.title=state.search;
 
+  // Local filtering is the source of truth. These params are passed where the marketplace supports them.
+  if(state.uploadedAfter) params.pdate_from = $("uploadedAfter")?.value;
+  if(state.uploadedBefore) params.pdate_to = $("uploadedBefore")?.value;
+
   return params;
 }
 
 function bindFilterUi(){
   const ids=[
     "filterSearch","priceMin","priceMax","skinMin","skinMax","levelMin","levelMax",
-    "sellerFilter","countryFilter","emailFilter","sortFilter","includeTerms","excludeTerms",
+    "sellerFilter","countryFilter","emailFilter","sortFilter","marketOrder","quickOrder","uploadedAfter","uploadedBefore","activityAfter","activityBefore","includeTerms","excludeTerms",
     "hideUnknownPrice","hideUnknownSeller","hideUnknownCountry","onlyFullInfo"
   ];
 
@@ -671,6 +1068,14 @@ function bindFilterUi(){
   if($("applyPresetFresh")) $("applyPresetFresh").onclick=()=>applyPreset("fresh");
   if($("applyPresetBudget")) $("applyPresetBudget").onclick=()=>applyPreset("budget");
   if($("applyPresetPremium")) $("applyPresetPremium").onclick=()=>applyPreset("premium");
+  document.querySelectorAll("[data-order-preset]").forEach(btn=>{
+    btn.onclick=()=>{
+      if($("marketOrder")) $("marketOrder").value=btn.dataset.orderPreset;
+      if($("sortFilter")) $("sortFilter").value=btn.dataset.orderPreset.includes("price_to_up") ? "price_asc" : btn.dataset.orderPreset.includes("price_to_down") ? "price_desc" : btn.dataset.orderPreset.includes("pdate_to_down") ? "uploaded_desc" : "market";
+      refreshFilteredResults();
+      toast(`${btn.textContent.trim()} order selected`);
+    };
+  });
 
   if($("viewCardsBtn")) $("viewCardsBtn").onclick=()=>{
     currentViewMode="cards";
@@ -693,7 +1098,9 @@ function card(caseItem){
   const emailIcon=iconBool(caseItem.email_changeable);
   const extraLines=[
     caseItem.vbucks ? `💎 V-Bucks: ${caseItem.vbucks}` : "",
-    caseItem.platform ? `🎮 Platform: ${caseItem.platform}` : ""
+    caseItem.platform ? `🎮 Platform: ${caseItem.platform}` : "",
+    caseItem.uploaded_at && caseItem.uploaded_at !== "Unknown" ? `🆕 Uploaded: ${niceDate(caseItem.uploaded_at)}` : "",
+    caseItem.listed_at && caseItem.listed_at !== "Unknown" ? `📌 Listed: ${niceDate(caseItem.listed_at)}` : ""
   ].filter(Boolean).join("\n");
 
   const output=
@@ -708,7 +1115,7 @@ Email Changeable: ${emailIcon}
 💵 Price: ${priceText(caseItem.price)}
 🔢 Season Level: ${caseItem.season_level||"Unknown"}
 🌍 Country: ${caseItem.country||"Unknown"}
-⏱️ Last Activity: ${cleanDate(caseItem.last_activity)}${extraLines ? "\n"+extraLines : ""}
+⏱️ Last Activity: ${cleanDate(caseItem.last_activity)}${caseItem.uploaded_at && caseItem.uploaded_at !== "Unknown" ? `\n🆕 Uploaded: ${niceDate(caseItem.uploaded_at)}` : ""}${extraLines ? "\n"+extraLines : ""}
 🔗 Link: ${link||"Unavailable"}`;
 
   return `<article class="listing-alert-card premium-card ${currentViewMode==="compact"?"compact-result":""}">
@@ -726,9 +1133,15 @@ Email Changeable: ${emailIcon}
       <div><span>Email</span><strong>${esc(emailIcon)}</strong></div>
       <div><span>Level</span><strong>${esc(caseItem.season_level||"Unknown")}</strong></div>
       <div><span>Country</span><strong>${esc(caseItem.country||"Unknown")}</strong></div>
+      <div><span>Uploaded</span><strong>${esc(niceDate(caseItem.uploaded_at||"Unknown"))}</strong></div>
     </div>
 
     <pre class="listing-output">${esc(output)}</pre>
+
+    <details class="inventory-section" open>
+      <summary>Locker / inventory images</summary>
+      ${renderInventoryImages(caseItem)}
+    </details>
 
     <div class="card-actions">
       ${link?`<a class="ghost small" target="_blank" rel="noopener" href="${esc(link)}">Open source</a>`:""}
@@ -908,7 +1321,12 @@ async function scan(){
       const detailTasks=entries.map(([id,pack])=>async()=>{
         if(delay) await sleep(Math.min(delay,700));
         const detailData=await getListingDetail(id);
-        return {id,pack,detailData};
+        let pageImages=[];
+        if($("scrapeListingPageImages") ? $("scrapeListingPageImages").checked : true){
+          const html=await fetchListingPageHtml(id);
+          pageImages=extractLockerImagesFromHtml(html);
+        }
+        return {id,pack,detailData,pageImages};
       });
 
       const enrichedById=new Map();
@@ -916,6 +1334,7 @@ async function scan(){
       await runPool(detailTasks,Math.max(1,Math.min(maxConcurrent,6)),(done,total,taskIndex,result)=>{
         if(result && !result.error){
           const record=extractListingFields(result.pack.summary,result.detailData,result.pack.labels);
+          record.image_urls=combineImageLists(result.pageImages,record.image_urls);
           enrichedById.set(result.id,compactCase(record));
 
           const merged=entries.map(([id,pack])=>{

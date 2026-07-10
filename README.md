@@ -98,3 +98,60 @@ This build adds a polished Filter Lab:
 - API price/title params where supported, plus local filtering
 
 Results update live as filters change.
+
+
+## Order filters
+
+Added marketplace/order controls:
+
+- Newest uploaded
+- Oldest uploaded
+- Cheapest first
+- Highest price
+- Newest listed
+- Oldest listed
+- Display sort: uploaded/listed/activity/price/skins/level
+- Quick filters: uploaded today, uploaded this week, active last 30 days, has price
+- Uploaded after/before date filters
+- Activity after/before date filters
+
+The selected marketplace order is sent as `order_by` in scan requests.
+
+
+## Inventory checker images
+
+This build adds an Inventory Checker Images section to each result card.
+
+It extracts image URLs from listing search/detail data, including likely fields such as:
+
+- image / images
+- screenshot / screenshots
+- inventory / inventory_images
+- inventory_checker / checker
+- HTML image `src` attributes
+
+Images are lazy-loaded thumbnails and each card includes a `Copy image links` button.
+
+A new filter toggle is also included:
+
+- Has inventory images
+
+
+## Locker page image scraping
+
+This build now fetches the actual LZT listing page for each numeric listing ID:
+
+```text
+https://lzt.market/<listing id>/
+```
+
+Then it extracts locker/inventory images from the page HTML, including:
+
+- `src`
+- `data-src`
+- `data-original`
+- `srcset`
+- CSS `url(...)`
+- image URLs embedded in script/JSON
+
+This is separate from API detail image extraction, because LZT often shows the locker directly on the listing page.
