@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Wrota CMD Scanner</title>
+  <link rel="stylesheet" href="styles.css?v=cmd-1">
+</head>
+<body>
+  <div class="scanlines"></div>
+  <main class="terminal">
+    <header class="topbar">
+      <div>
+        <div class="prompt"><span>C:\WROTA&gt;</span> LZT_CHECKER.EXE</div>
+        <h1>Wrota CMD Scanner</h1>
+        <p>one mixed global feed · unique accounts · multi-match badges · proxy image loader</p>
+      </div>
+      <div class="top-actions">
+        <span id="status" class="status">READY</span>
+        <button id="scanBtn" class="btn primary">RUN SCAN</button>
+      </div>
+    </header>
+
+    <section class="console-grid">
+      <aside class="panel config">
+        <div class="panel-title">[01] CONFIG</div>
+
+        <label>PROXY URL</label>
+        <input id="proxyUrl" spellcheck="false">
+
+        <label>API KEY</label>
+        <input id="apiKey" type="password" autocomplete="current-password" placeholder="paste lzt api key">
+
+        <label>OPTIONAL COOKIE FOR IMAGES</label>
+        <input id="cookie" type="password" autocomplete="off" placeholder="only if image endpoint needs session">
+
+        <div class="row">
+          <button id="showBtn" class="btn">SHOW</button>
+          <button id="testBtn" class="btn">TEST</button>
+          <button id="saveBtn" class="btn">SAVE</button>
+          <button id="clearBtn" class="btn danger">CLEAR</button>
+        </div>
+
+        <div class="mini-log" id="miniLog">system idle...</div>
+      </aside>
+
+      <section class="panel targets">
+        <div class="panel-title">[02] TARGETS</div>
+        <div class="target-add">
+          <input id="targetInput" placeholder="skin[]=... / pickaxe[]=... / full lzt url / raw cosmetic id">
+          <button id="addTargetBtn" class="btn">ADD</button>
+        </div>
+
+        <details open>
+          <summary>ACTIVE_TARGETS <b id="targetCount">0</b></summary>
+          <div id="targetList" class="target-list"></div>
+        </details>
+
+        <textarea id="bulkTargets" rows="5" spellcheck="false" placeholder="bulk paste targets here"></textarea>
+        <div class="row">
+          <button id="parseBulkBtn" class="btn">PARSE BULK</button>
+          <button id="ogBtn" class="btn">LOAD OG SET</button>
+          <button id="clearTargetsBtn" class="btn danger">CLEAR TARGETS</button>
+        </div>
+      </section>
+    </section>
+
+    <section class="panel controls">
+      <div class="panel-title">[03] SCAN ARGS</div>
+      <div class="args-grid">
+        <label>ORDER
+          <select id="order">
+            <option value="pdate_to_down_upload">newest_uploaded</option>
+            <option value="pdate_to_up_upload">oldest_uploaded</option>
+            <option value="price_to_up">cheapest_first</option>
+            <option value="price_to_down">highest_price</option>
+            <option value="pdate_to_down">newest_listed</option>
+            <option value="pdate_to_up">oldest_listed</option>
+          </select>
+        </label>
+        <label>PAGES
+          <input id="pages" type="number" min="1" max="30" value="4">
+        </label>
+        <label>THREADS
+          <input id="threads" type="number" min="1" max="8" value="3">
+        </label>
+        <label>DELAY_MS
+          <input id="delay" type="number" min="0" max="15000" value="350">
+        </label>
+        <label class="check"><input id="enrich" type="checkbox" checked> enrich_html</label>
+        <label class="check"><input id="loadImages" type="checkbox" checked> load_images</label>
+      </div>
+    </section>
+
+    <section class="stats">
+      <div><span>SHOWN</span><b id="statShown">0</b></div>
+      <div><span>UNIQUE</span><b id="statUnique">0</b></div>
+      <div><span>HITS</span><b id="statHits">0</b></div>
+      <div><span>IMG_FAIL</span><b id="statImgFail">0</b></div>
+      <div><span>SAVED</span><b id="statSaved">0</b></div>
+    </section>
+
+    <section class="panel filters">
+      <div class="panel-title">[04] FILTER_PIPE</div>
+      <div class="filter-line">
+        <input id="q" placeholder="grep title/seller/badge/country">
+        <input id="minPrice" type="number" min="0" placeholder="price_min">
+        <input id="maxPrice" type="number" min="0" placeholder="price_max">
+        <select id="sort">
+          <option value="market">sort:global_market</option>
+          <option value="newest">sort:newest</option>
+          <option value="price_asc">sort:price_asc</option>
+          <option value="price_desc">sort:price_desc</option>
+          <option value="matches_desc">sort:matches_desc</option>
+        </select>
+        <label class="check"><input id="multiOnly" type="checkbox"> multi_match</label>
+      </div>
+      <div class="row">
+        <button id="resetFiltersBtn" class="btn">RESET FILTERS</button>
+        <button id="compactBtn" class="btn">COMPACT</button>
+        <button id="copyBtn" class="btn">COPY FILTERED</button>
+        <button id="exportBtn" class="btn">EXPORT JSON</button>
+      </div>
+    </section>
+
+    <section class="panel feed-panel">
+      <div class="panel-title">[05] GLOBAL_MIXED_FEED</div>
+      <div id="progress" class="progress hidden"><span id="progressText">0%</span><div><i id="progressBar"></i></div></div>
+      <div id="feed" class="empty">
+        <pre>
+C:\WROTA&gt; waiting for scan...
+Targets are inputs only.
+Results will appear as one global mixed feed.
+        </pre>
+      </div>
+    </section>
+
+    <section class="panel saved-panel">
+      <div class="panel-title">[06] SAVED_CASES</div>
+      <div class="row">
+        <button id="exportSavedBtn" class="btn">EXPORT SAVED</button>
+        <button id="clearSavedBtn" class="btn danger">CLEAR SAVED</button>
+      </div>
+      <div id="saved" class="empty small"><pre>no saved cases</pre></div>
+    </section>
+
+    <section class="panel debug">
+      <div class="panel-title">[07] DEBUG_LOG</div>
+      <button id="clearLogBtn" class="btn">CLEAR LOG</button>
+      <pre id="debugLog"></pre>
+    </section>
+  </main>
+
+  <script src="app.js?v=cmd-1"></script>
+</body>
+</html>
