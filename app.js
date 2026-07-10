@@ -230,117 +230,10 @@ async function detail(id,fallback){
   catch(error){return {summary_only:fallback,error:error.message};}
 }
 
-
-function activeAdvancedParams(){
-  const params={};
-
-  document.querySelectorAll("[data-filter-param]").forEach(el=>{
-    const key=el.dataset.filterParam;
-    if(!key)return;
-    if(el.type==="checkbox"){
-      if(el.checked)params[key]=1;
-      return;
-    }
-    const value=(el.value||"").trim();
-    if(value)params[key]=value;
-  });
-
-  document.querySelectorAll("[data-array-param]").forEach(el=>{
-    const key=el.dataset.arrayParam;
-    const raw=(el.value||"").trim();
-    if(!key || !raw)return;
-    const values=raw.split(",").map(x=>x.trim()).filter(Boolean);
-    if(values.length)params[key]=values;
-  });
-
-  document.querySelectorAll("[data-radio-group]").forEach(group=>{
-    const key=group.dataset.radioGroup;
-    const active=group.querySelector("button.active");
-    const value=active?.dataset?.value || "";
-    if(key && value)params[key]=value;
-  });
-
-  if($("pubDateEnabled")?.checked){
-    if($("pubDateFrom")?.value)params["published_after"]=$("pubDateFrom").value;
-    if($("pubDateTo")?.value)params["published_before"]=$("pubDateTo").value;
-  }
-
-  return params;
-}
-
-function mergeParams(base, extra){
-  const merged={...base};
-  for(const [key,value] of Object.entries(extra||{})){
-    if(value===undefined||value===null||value==="")continue;
-    if(merged[key]!==undefined){
-      const a=Array.isArray(merged[key])?merged[key]:[merged[key]];
-      const b=Array.isArray(value)?value:[value];
-      merged[key]=[...a,...b];
-    }else{
-      merged[key]=value;
-    }
-  }
-  return merged;
-}
-
-function resetAdvancedFilters(){
-  document.querySelectorAll(".advanced-panel input").forEach(el=>{
-    if(el.type==="checkbox")el.checked=false;
-    else el.value="";
-  });
-  document.querySelectorAll(".advanced-panel select").forEach(el=>el.value="");
-  document.querySelectorAll("[data-radio-group]").forEach(group=>{
-    group.querySelectorAll("button").forEach(btn=>btn.classList.toggle("active",btn.dataset.value===""));
-  });
-  toast("Advanced filters reset");
-}
-
-function bindAdvancedFilters(){
-  document.querySelectorAll("[data-radio-group] button").forEach(btn=>{
-    btn.onclick=()=>{
-      const group=btn.closest("[data-radio-group]");
-      group.querySelectorAll("button").forEach(x=>x.classList.remove("active"));
-      btn.classList.add("active");
-    };
-  });
-  $("resetAdvancedBtn").onclick=resetAdvancedFilters;
-}
-
-function localAdvancedMatch(item){
-  const title=($("titleSearch")?.value||"").trim().toLowerCase();
-  if(title){
-    const text=textFrom(item);
-    if(!text.includes(title))return false;
-  }
-
-  const minMaxChecks=[
-    ["priceFrom","price",">="],["priceTo","price","<="],
-    ["outfitsFrom","skins",">="],["outfitsTo","skins","<="],
-    ["pickaxesFrom","pickaxes",">="],["pickaxesTo","pickaxes","<="],
-    ["dancesFrom","dances",">="],["dancesTo","dances","<="],
-    ["glidersFrom","gliders",">="],["glidersTo","gliders","<="],
-    ["vbucksFrom","vbucks",">="],["vbucksTo","vbucks","<="],
-    ["friendsFrom","friends",">="],["friendsTo","friends","<="],
-    ["levelFrom","level",">="],["levelTo","level","<="]
-  ];
-
-  for(const [inputId,field,op] of minMaxChecks){
-    const raw=($(inputId)?.value||"").trim();
-    if(!raw)continue;
-    const target=Number(raw);
-    const value=Number(item?.[field] ?? item?.raw?.summary?.[field] ?? item?.raw?.detail?.[field]);
-    if(Number.isNaN(value))continue;
-    if(op===">=" && value<target)return false;
-    if(op==="<=" && value>target)return false;
-  }
-
-  return true;
-}
-
 function paramsForFilter(filter,page){
   const params={page,order_by:"pdate_to_down_upload",currency:"usd"};
   params[filter.param]=filter.id;
-  return mergeParams(params, activeAdvancedParams());
+  return params;
 }
 
 function progress(done,total,label){
@@ -457,7 +350,6 @@ async function scan(){
           const items=extractItems(data);
 
           for(const item of items){
-            if(!localAdvancedMatch(item))continue;
             const id=itemId(item);
             if(!id)continue;
             const existing=found.get(id)||item;
@@ -570,7 +462,6 @@ function bind(){
   $("exportResultsBtn").onclick=()=>downloadJson("wrota-results.json",currentResults());
   $("exportCasesBtn").onclick=()=>downloadJson("wrota-cases.json",cases());
   $("clearCasesBtn").onclick=()=>{saveCases([]);renderCases();toast("Cases cleared");};
-  bindAdvancedFilters();
 }
 
 window.addEventListener("error",event=>{

@@ -65,22 +65,3 @@ This specifically prevents:
 ```text
 Failed to execute 'setItem' on 'Storage': Setting the value of 'wrota.polished.results.v1' exceeded the quota.
 ```
-
-
-## Advanced filters panel
-
-This build adds a full advanced filter panel similar to the market filter layout:
-
-- price range
-- title / Fortnite ID search
-- platform
-- account origin / email filters
-- publication date
-- sold-before toggles
-- changeable email / Xbox / PSN segmented controls
-- min/max outfits, pickaxes, dances, gliders, V-Bucks, friends, level
-- paid items
-- Battle Pass controls
-- extra cosmetic ID fields for outfits, pickaxes, emotes, and gliders
-
-The app sends filled filters as query parameters with each OG preset scan, and also applies lightweight local filtering where possible.
