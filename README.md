@@ -1,81 +1,38 @@
-# Wrota Review Console
+# Wrota Review Console — Stable Clean
 
-Upload these files to the root of your GitHub Pages repository:
+Upload all files in this ZIP to the root of your GitHub Pages repository.
 
-- index.html
-- styles.css
-- app.js
-- .nojekyll
-- 404.html
+This build uses `app-stable.js` instead of `app.js` to avoid old browser/GitHub cache issues.
 
-The interface uses the built-in proxy and only asks for the API key inside the browser session.
-
-
-## Browser-save API key field
-
-This build keeps the API key as a normal password-manager-compatible field:
-
-```html
-autocomplete="current-password"
-name="lzt_api_key"
-```
-
-Browsers/password managers can offer to save and autofill the API key for this site.
-The key is not hardcoded into the public website files.
-
-
-## Quota fix
-
-This build no longer saves large raw API blobs into localStorage.
-
-It stores compact browser-safe records only:
-
-- item ID
-- title
-- price/currency
-- seller
-- source URL
-- matched OG filter
-- created timestamp
-
-This prevents:
-
-```text
-Failed to execute 'setItem' on 'Storage'
-```
-
-It also automatically trims old legacy `raw` records if they exist in browser storage.
-
-## Raider's Revenge OG style
-
-The Raider's Revenge filter is labelled as `Raider’s Revenge OG Style` and its aliases focus on the OG / Black & Gold style wording.
-
-
-## Storage hard fix
-
-This build does not save scan results to localStorage anymore.
-
-- Current scan results are kept in memory only.
-- Saved cases are compact and capped at 100.
-- Old oversized result storage is deleted automatically on page load.
-- If storage is still full, the app trims saved cases instead of crashing.
-
-This specifically prevents:
-
-```text
-Failed to execute 'setItem' on 'Storage': Setting the value of 'wrota.polished.results.v1' exceeded the quota.
-```
-
-
-## Script error fix
-
-This build restores the missing `compactCase()` helper used by the storage hard fix.
-
-It also keeps:
-
+Includes:
 - polished dashboard
 - browser-save API key field
+- hidden built-in proxy
 - OG filters only
-- Raider’s Revenge OG Style label
+- Raider’s Revenge OG Style
+- scan results kept in memory
+- saved cases compact/capped
 - no advanced filters panel
-- scan results kept in memory instead of localStorage
+
+
+## Listing-output style
+
+This build formats website result cards like:
+
+```text
+New Fortnite listing on LZT Market
+
+Skin Count: 5
+Exclusives: OG Skull Trooper
+Email Changeable: ❌
+
+🏷️ Title: 5 Skins | OG STW | Og Skull Trooper | Rust Lord | Mission Specialist | 2500 VB
+👤 Seller: zerosugar
+💵 Price: $401.77
+🔢 Season Level: 1
+🌍 Country: FI
+⏱️ Last Activity: 2024-09-13
+🔗 Link: https://lzt.market/244307015/
+```
+
+It also adds a `Copy message` button for each result.
