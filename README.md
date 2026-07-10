@@ -41,3 +41,13 @@ Display sort: Marketplace order
 ```
 
 Then run a new scan. Marketplace order is applied in the API request.
+
+
+## Accounts fixed build
+
+Fixes:
+
+- Blank number filters now count as empty, not `0`.
+- Results are no longer hidden by empty `Price to`, `Skins to`, or `Level to` fields.
+- Listing extraction is more tolerant of LZT response shapes.
+- Numeric object keys from API responses are copied into `item_id` when needed.

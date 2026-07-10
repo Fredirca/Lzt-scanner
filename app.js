@@ -190,7 +190,7 @@ function renderTargets(){
 }
 
 function listingId(item){
-  const raw=item?.item_id??item?.itemId??item?.account_id??item?.accountId??"";
+  const raw=item?.item_id??item?.itemId??item?.account_id??item?.accountId??item?.id??"";
   const s=String(raw);
   return /^\d+$/.test(s)?s:"";
 }
@@ -198,9 +198,30 @@ function isListing(item){
   if(!item||typeof item!=="object")return false;
   const id=listingId(item);
   if(!id)return false;
-  const txt=String(item.id||item.item_id||"").toLowerCase();
-  if(txt.startsWith("cid_")||txt.includes("athena_commando"))return false;
-  return Boolean(item.title||item.item_title||item.name) && (item.price!==undefined||item.price_usd!==undefined||item.seller||item.user||item.item_id||item.account_id);
+
+  const idText=String(item.id||item.item_id||item.itemId||"").toLowerCase();
+  if(idText.startsWith("cid_")||idText.includes("athena_commando")||idText.includes("pickaxe_"))return false;
+
+  const hasListingShape =
+    item.price!==undefined ||
+    item.price_usd!==undefined ||
+    item.cost!==undefined ||
+    item.amount!==undefined ||
+    item.seller!==undefined ||
+    item.user!==undefined ||
+    item.item_id!==undefined ||
+    item.itemId!==undefined ||
+    item.account_id!==undefined ||
+    item.accountId!==undefined;
+
+  const hasUsefulText =
+    item.title!==undefined ||
+    item.item_title!==undefined ||
+    item.name!==undefined ||
+    item.description!==undefined ||
+    item.preview!==undefined;
+
+  return hasListingShape || hasUsefulText;
 }
 function extractItems(data){
   const out=[],seen=new Set();
@@ -213,7 +234,12 @@ function extractItems(data){
       if(!seen.has(id)){seen.add(id);out.push(v);}
     }
     for(const [k,n] of Object.entries(v)){
-      if(["items","data","results","list","accounts","market_items","response"].includes(k)||Array.isArray(n))walk(n);
+      if(/^\d+$/.test(String(k)) && n && typeof n==="object" && !Array.isArray(n)){
+        if(n.item_id===undefined && n.itemId===undefined && n.account_id===undefined && n.accountId===undefined && n.id===undefined){
+          n.item_id=k;
+        }
+      }
+      if(["items","data","results","list","accounts","market_items","response","values"].includes(k)||Array.isArray(n)||/^\d+$/.test(String(k)))walk(n);
     }
   }
   walk(data);
@@ -376,7 +402,12 @@ function getFilters(){
     hasImagesOnly:$("hasImagesOnly")?.checked,onlyFullInfo:$("onlyFullInfo")?.checked
   };
 }
-function numOrNull(id){const n=Number($(id)?.value);return Number.isFinite(n)?n:null;}
+function numOrNull(id){
+  const raw=$(id)?.value;
+  if(raw===undefined || raw===null || String(raw).trim()==="")return null;
+  const n=Number(raw);
+  return Number.isFinite(n)?n:null;
+}
 function dateInput(id){const v=$(id)?.value;if(!v)return null;const d=new Date(`${v}T00:00:00`);return Number.isNaN(d.getTime())?null:d;}
 function passes(r,f=getFilters()){
   const txt=textOf(r);
