@@ -167,3 +167,14 @@ It also fixes the `Loading details 127/127` hang by adding:
 - final `Done · X result(s)` badge
 
 If a detail request fails, the listing still appears using summary data.
+
+
+## Null proxy field fix
+
+This build fixes:
+
+```text
+Cannot read properties of null (reading 'value')
+```
+
+The proxy input is hidden, and JavaScript now uses the built-in proxy URL directly.
