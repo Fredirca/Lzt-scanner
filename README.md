@@ -42,3 +42,46 @@ This build tries:
 Same for `pickaxes`.
 
 If LZT requires a logged-in session for image endpoints, paste the optional cookie into the Cookie field.
+
+
+## Upload dates build
+
+This version makes upload dates visible on every listing card:
+
+- Adds a clear `UPLOAD_DATE:` stamp near the title.
+- Keeps `UPLOAD DATE` in the info grid.
+- Copies upload date into the generated message.
+- Checks more possible API/date field names.
+- Parses LZT listing page `published_date` and `refreshed_date` values when enrichment is on.
+
+
+## Newest sorting by system time
+
+This build changes "newest" sorting:
+
+- Uses each listing's upload date + time.
+- Compares that timestamp against the user's current browser/system time.
+- The listing with the smallest distance to current system time appears first.
+- This applies to `sort:global_market`, `sort:newest`, and `newest_uploaded`.
+- `oldest_uploaded` still sorts by oldest upload timestamp.
+- Cards now show `AGE` and `System-Time Distance`.
+
+
+## Site-hosted image blobs
+
+This version hides the Cloudflare/proxy URL from the scanner UI.
+
+Images are no longer displayed as Cloudflare or LZT links. The page fetches each locker image through the hidden proxy transport, converts the response to a browser `Blob`, and displays it with a local `blob:` URL inside the site.
+
+Visible result cards now show:
+
+```text
+HOSTED_ON_PAGE
+SITE_HOSTED_LOCKER_IMAGES
+```
+
+Notes:
+
+- The images are hosted inside the current browser page/session as object URLs.
+- A static GitHub Pages site cannot permanently store newly scanned remote images without a real storage backend.
+- This build avoids showing/pasting Cloudflare links in the UI.

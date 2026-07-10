@@ -13,7 +13,7 @@
       <div>
         <div class="prompt"><span>C:\WROTA&gt;</span> LZT_CHECKER.EXE</div>
         <h1>Wrota CMD Scanner</h1>
-        <p>one mixed global feed · unique accounts · multi-match badges · proxy image loader</p>
+        <p>one mixed global feed · unique accounts · multi-match badges · site-hosted image blobs</p>
       </div>
       <div class="top-actions">
         <span id="status" class="status">READY</span>
@@ -25,8 +25,11 @@
       <aside class="panel config">
         <div class="panel-title">[01] CONFIG</div>
 
-        <label>PROXY URL</label>
-        <input id="proxyUrl" spellcheck="false">
+        <input id="proxyUrl" type="hidden">
+        <div class="connection-hidden">
+          <b>TRANSPORT:</b> hidden proxy bridge
+          <span>Cloudflare URL is not shown in the scanner UI.</span>
+        </div>
 
         <label>API KEY</label>
         <input id="apiKey" type="password" autocomplete="current-password" placeholder="paste lzt api key">
@@ -67,6 +70,7 @@
 
     <section class="panel controls">
       <div class="panel-title">[03] SCAN ARGS</div>
+      <div class="sort-note">NEWEST = closest upload date+time to your current system/browser time.</div>
       <div class="args-grid">
         <label>ORDER
           <select id="order">

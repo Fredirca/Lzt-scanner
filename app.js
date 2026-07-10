@@ -83,35 +83,35 @@ function imgProxyEndpoint(id,type){return proxyUrl(imgEndpoint(id,type));}
 
 async function loadImage(img,id,type){
   if(!$("loadImages").checked)return;
-  const direct=imgEndpoint(id,type);
-  const prox=imgProxyEndpoint(id,type);
 
-  // Try proxy as blob first, because it can carry API key/cookie headers.
+  // Fetch through the hidden proxy transport, then host the bytes inside the page as a blob: URL.
+  // The visible <img> src becomes blob:<this-site-origin>/..., not a Cloudflare/LZT URL.
   try{
-    const res=await fetchTimeout(prox,{headers:headers("image/avif,image/webp,image/apng,image/*,*/*;q=0.8")},45000);
+    img.closest(".imgwrap")?.classList.add("loading");
+    const res=await fetchTimeout(imgProxyEndpoint(id,type),{headers:headers("image/avif,image/webp,image/apng,image/*,*/*;q=0.8")},45000);
     if(!res.ok)throw new Error(`img ${res.status}`);
     const blob=await res.blob();
-    if(!blob.type.startsWith("image/"))throw new Error(`not image ${blob.type}`);
+    if(!blob.type.startsWith("image/"))throw new Error(`not image ${blob.type||"unknown"}`);
     const old=blobUrls.get(img.id);
     if(old)URL.revokeObjectURL(old);
     const url=URL.createObjectURL(blob);
     blobUrls.set(img.id,url);
     img.src=url;
+    img.dataset.hosted="page-blob";
+    img.closest(".imgwrap")?.classList.remove("loading","failed");
     return;
   }catch(e){
-    log("image proxy failed",{id,type,error:e.message});
+    img.closest(".imgwrap")?.classList.remove("loading");
+    img.closest(".imgwrap")?.classList.add("failed");
+    log("image hosting failed",{id,type,error:e.message});
+    imgFails++;
+    renderStats();
   }
-
-  // Then try direct.
-  img.src=direct;
 }
 window.__imgFail=function(img){
   const box=img.closest(".imgwrap");
-  if(!img.dataset.directTried){
-    img.dataset.directTried="1";
-    img.src=img.dataset.direct;
-    return;
-  }
+  if(img.dataset.failCounted)return;
+  img.dataset.failCounted="1";
   imgFails++;
   box?.classList.add("failed");
   renderStats();
@@ -225,6 +225,38 @@ function dateVal(v){
   const d=new Date(String(v));return isNaN(d)?null:d;
 }
 function niceDate(v){const d=dateVal(v);return d?d.toISOString().slice(0,10):"Unknown";}
+function niceDateTime(v){
+  const d=dateVal(v);
+  if(!d)return "Unknown";
+  return d.toISOString().slice(0,16).replace("T"," ");
+}
+function uploadDate(r){
+  return r.uploaded!=="Unknown" ? r.uploaded : (r.updated!=="Unknown" ? r.updated : "Unknown");
+}
+function uploadMs(r){
+  const d=dateVal(uploadDate(r));
+  return d ? d.getTime() : -Infinity;
+}
+function newestDistance(r){
+  const ms=uploadMs(r);
+  return ms===-Infinity ? Infinity : Math.abs(Date.now()-ms);
+}
+function ageText(r){
+  const ms=uploadMs(r);
+  if(ms===-Infinity)return "Unknown";
+  const diff=Date.now()-ms;
+  const abs=Math.abs(diff);
+  const future=diff<0;
+  const mins=Math.floor(abs/60000);
+  const hours=Math.floor(mins/60);
+  const days=Math.floor(hours/24);
+  let txt;
+  if(mins<1)txt="now";
+  else if(mins<60)txt=`${mins}m`;
+  else if(hours<48)txt=`${hours}h`;
+  else txt=`${days}d`;
+  return future ? `in ${txt}` : `${txt} ago`;
+}
 function num(v){const m=String(v??"").match(/-?\d+(\.\d+)?/);return m?Number(m[0]):null;}
 function priceText(v){const n=num(v);return n===null?"Unknown":`$${n.toFixed(2)}`;}
 
@@ -232,8 +264,16 @@ function parseHtml(html){
   const f={};
   const price=html.match(/id=["']price["'][^>]*data-value=["']([^"']+)["']/i);if(price)f.price=price[1];
   const title=html.match(/<span[^>]*class=["'][^"']*title-account[^"']*["'][^>]*>([\s\S]*?)<\/span>/i);if(title)f.title=title[1].replace(/<[^>]+>/g,"").trim();
-  const pub=html.match(/class=["'][^"']*published_date[^"']*["'][^>]*data-value=["']([^"']+)["']/i);if(pub)f.uploaded=Number(pub[1]);
-  const upd=html.match(/class=["'][^"']*refreshed_date[^"']*["'][^>]*data-value=["']([^"']+)["']/i);if(upd)f.updated=Number(upd[1]);
+  const pub=html.match(/class=["'][^"']*published_date[^"']*["'][^>]*data-value=["']([^"']+)["']/i)
+    || html.match(/published_date[^>]*data-value=["']([^"']+)["']/i)
+    || html.match(/data-cachedtitle=["']([^"']*(?:\d{4}|Yesterday|Today)[^"']*)["'][^>]*>[^<]*(?:Yesterday|Today|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/i);
+  if(pub){
+    const raw=pub[1];
+    f.uploaded=/^\d+$/.test(String(raw))?Number(raw):raw;
+  }
+  const upd=html.match(/class=["'][^"']*refreshed_date[^"']*["'][^>]*data-value=["']([^"']+)["']/i)
+    || html.match(/refreshed_date[^>]*data-value=["']([^"']+)["']/i);
+  if(upd)f.updated=Number(upd[1]);
   const seller=html.match(/data-user=["'][^,"']+,\s*([^"']+)["']/i);if(seller)f.seller=seller[1].trim();
   return f;
 }
@@ -256,8 +296,8 @@ function normalize(summary,detail={},labels=[],rank=0){
     skins:known(skins)?skins:"Unknown",
     level:known(level)?level:"Unknown",
     email,
-    uploaded:summary.uploaded_at||summary.upload_date||summary.pdate_upload||summary.pdate||merged.uploaded_at||merged.pdate||"Unknown",
-    updated:summary.updated_at||merged.updated_at||"Unknown",
+    uploaded:summary.uploaded_at||summary.upload_date||summary.uploaded||summary.created_at||summary.created_date||summary.published_at||summary.published_date||summary.pdate_upload||summary.pdate||merged.uploaded_at||merged.upload_date||merged.uploaded||merged.created_at||merged.created_date||merged.published_at||merged.published_date||merged.pdate||"Unknown",
+    updated:summary.updated_at||summary.refreshed_at||summary.refreshed_date||summary.last_update||merged.updated_at||merged.refreshed_at||merged.refreshed_date||merged.last_update||"Unknown",
     labels:[...new Set(labels)],
     raw:{summary,detail}
   };
@@ -289,12 +329,17 @@ function filter(){
 function sortList(list){
   const s=$("sort").value, order=$("order").value;
   const arr=list.slice();
-  const uploaded=x=>dateVal(x.uploaded)?.getTime()??dateVal(x.updated)?.getTime()??-Infinity;
+
+  // "Newest" means closest upload date+time to the user's current system/browser time.
+  // This is better than target order and better than page order.
+  const newestSort=(a,b)=>newestDistance(a)-newestDistance(b) || (uploadMs(b)-uploadMs(a)) || a.rank-b.rank;
+  const oldestSort=(a,b)=>(uploadMs(a)===-Infinity?Infinity:uploadMs(a))-(uploadMs(b)===-Infinity?Infinity:uploadMs(b)) || a.rank-b.rank;
+
   if(s==="market"||s==="newest"){
     if(order==="price_to_up")arr.sort((a,b)=>(num(a.price)??Infinity)-(num(b.price)??Infinity));
     else if(order==="price_to_down")arr.sort((a,b)=>(num(b.price)??-Infinity)-(num(a.price)??-Infinity));
-    else if(order.includes("up")&&!order.includes("down"))arr.sort((a,b)=>(uploaded(a)===-Infinity?Infinity:uploaded(a))-(uploaded(b)===-Infinity?Infinity:uploaded(b))||a.rank-b.rank);
-    else arr.sort((a,b)=>uploaded(b)-uploaded(a)||a.rank-b.rank);
+    else if(order==="pdate_to_up_upload"||order==="pdate_to_up")arr.sort(oldestSort);
+    else arr.sort(newestSort);
   }
   if(s==="price_asc")arr.sort((a,b)=>(num(a.price)??Infinity)-(num(b.price)??Infinity));
   if(s==="price_desc")arr.sort((a,b)=>(num(b.price)??-Infinity)-(num(a.price)??-Infinity));
@@ -315,16 +360,21 @@ Seller: ${r.seller}
 Price: ${priceText(r.price)}
 Season Level: ${r.level}
 Country: ${r.country}
-Uploaded: ${niceDate(r.uploaded!=="Unknown"?r.uploaded:r.updated)}
+Upload Date: ${niceDateTime(uploadDate(r))}
+System-Time Distance: ${ageText(r)}
 Link: https://lzt.market/${r.id}/`;
 }
 function imgBox(r,type,label){
-  const direct=imgEndpoint(r.id,type);
-  const prox=imgProxyEndpoint(r.id,type);
   const imgId=`img-${type}-${r.id}`;
   return `<div class="imgbox">
-    <div class="imgbox-head"><b>${label}</b><span><a href="${esc(direct)}" target="_blank">direct</a> <a href="${esc(prox)}" target="_blank">proxy</a></span></div>
-    <div class="imgwrap"><img id="${esc(imgId)}" data-id="${esc(r.id)}" data-type="${esc(type)}" data-direct="${esc(direct)}" alt="${esc(label)}" onerror="window.__imgFail(this)"><span class="imgfail">image blocked - open direct/proxy link</span></div>
+    <div class="imgbox-head">
+      <b>${label}</b>
+      <span class="hosted-badge">HOSTED_ON_PAGE</span>
+    </div>
+    <div class="imgwrap">
+      <img id="${esc(imgId)}" data-id="${esc(r.id)}" data-type="${esc(type)}" alt="${esc(label)}" onerror="window.__imgFail(this)">
+      <span class="imgfail">image could not be hosted in this page</span>
+    </div>
   </div>`;
 }
 function card(r){
@@ -333,6 +383,7 @@ function card(r){
     <div class="card-head">
       <div>
         <div class="prompt"><span>C:\\WROTA\\LISTING&gt;</span> ${esc(r.id)}</div>
+        <div class="upload-stamp">UPLOAD_DATE: ${esc(niceDateTime(uploadDate(r)))} · ${esc(ageText(r))}</div>
         <h3>${esc(r.title)}</h3>
         <div class="badges">${r.labels.map(x=>`<span>${esc(x)}</span>`).join("")}</div>
       </div>
@@ -343,11 +394,12 @@ function card(r){
       <div><span>EMAIL</span><b>${esc(boolIcon(r.email))}</b></div>
       <div><span>LEVEL</span><b>${esc(r.level)}</b></div>
       <div><span>COUNTRY</span><b>${esc(r.country)}</b></div>
-      <div><span>UPLOADED</span><b>${esc(niceDate(r.uploaded!=="Unknown"?r.uploaded:r.updated))}</b></div>
+      <div><span>UPLOAD DATE</span><b>${esc(niceDateTime(uploadDate(r)))}</b></div>
+      <div><span>AGE</span><b>${esc(ageText(r))}</b></div>
       <div><span>MATCHES</span><b>${r.labels.length}</b></div>
     </div>
     <div class="card-body"><pre class="msg">${esc(msg)}</pre></div>
-    <details class="locker" open><summary>LOCKER_IMAGES</summary><div class="locker-grid">${imgBox(r,"skins","skins")}${imgBox(r,"pickaxes","pickaxes")}</div></details>
+    <details class="locker" open><summary>SITE_HOSTED_LOCKER_IMAGES</summary><div class="locker-grid">${imgBox(r,"skins","skins")}${imgBox(r,"pickaxes","pickaxes")}</div></details>
     <div class="card-actions">
       <a class="btn" href="https://lzt.market/${esc(r.id)}/" target="_blank">OPEN</a>
       <button class="btn" data-copy="${esc(msg)}">COPY</button>

@@ -187,7 +187,7 @@ summary b{
 .price{color:#031006;background:var(--green);padding:8px 10px;font-weight:900;height:max-content}
 .info{
   display:grid;
-  grid-template-columns:repeat(6,1fr);
+  grid-template-columns:repeat(7,1fr);
   gap:1px;
   background:var(--line);
   border-bottom:1px solid var(--line);
@@ -253,3 +253,60 @@ summary b{
 .debug pre,#debugLog{min-height:180px;max-height:340px;overflow:auto;margin:10px 0 0;color:var(--muted)}
 .small{min-height:100px}
 @media(max-width:1000px){.console-grid,.args-grid,.filter-line{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.topbar{display:block}.top-actions{justify-items:start;margin-top:14px}.locker-grid,.info{grid-template-columns:1fr 1fr}.terminal{padding:12px}}
+
+
+.upload-stamp{
+  display:inline-flex;
+  margin-top:8px;
+  border:1px solid var(--line);
+  background:rgba(0,255,123,.06);
+  color:var(--amber);
+  padding:5px 7px;
+  font-size:12px;
+  font-weight:900;
+}
+
+.sort-note{
+  border:1px dashed var(--line);
+  color:var(--amber);
+  background:rgba(255,227,110,.04);
+  padding:9px 10px;
+  margin-bottom:12px;
+  font-size:12px;
+  font-weight:900;
+}
+
+
+.connection-hidden{
+  border:1px dashed var(--line);
+  background:rgba(0,255,123,.04);
+  color:var(--muted);
+  padding:10px;
+  margin:8px 0 12px;
+  line-height:1.45;
+}
+.connection-hidden b{
+  color:var(--green);
+}
+.connection-hidden span{
+  display:block;
+  margin-top:4px;
+  font-size:12px;
+}
+.hosted-badge{
+  display:inline-flex;
+  border:1px solid var(--line);
+  background:rgba(0,255,123,.07);
+  color:var(--green);
+  padding:4px 6px;
+  font-size:10px;
+  font-weight:900;
+}
+.imgwrap.loading:before{
+  content:"hosting image in page...";
+  color:var(--muted);
+  font-size:12px;
+}
+.imgwrap.failed img{
+  display:none;
+}
