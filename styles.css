@@ -310,3 +310,10 @@ summary b{
 .imgwrap.failed img{
   display:none;
 }
+
+.api-mode-note{
+  border:1px dashed var(--line);
+  color:var(--amber);
+  padding:8px 10px;
+  background:rgba(255,227,110,.04);
+}

@@ -85,3 +85,36 @@ Notes:
 - The images are hosted inside the current browser page/session as object URLs.
 - A static GitHub Pages site cannot permanently store newly scanned remote images without a real storage backend.
 - This build avoids showing/pasting Cloudflare links in the UI.
+
+
+## Real newest order fix
+
+This version fixes newest ordering against the LZT/ReadMe docs.
+
+Changes:
+
+- Sends `order=<selected order>` to the API request.
+- Also sends `order_by=<selected order>` as a fallback.
+- Parses Unix timestamps returned as numeric strings, such as `"1783599271"`.
+- Known upload dates always sort above unknown upload dates.
+- `newest_uploaded` and `sort:newest` use upload date/time closest to the user's current browser/system time.
+- Debug log prints the selected order mode and confirms both `order` and `order_by` are sent.
+
+
+## Docs-aligned API client
+
+This build follows the public docs more closely:
+
+- Uses `Authorization: Bearer <token>` upstream through the hidden Worker bridge.
+- Sends `order` as the primary resource-ordering parameter.
+- Sends `order_by` as a fallback because older marketplace URLs/builds used it.
+- Applies a 225ms request gate so requests stay below the 300/minute documented limit.
+- Retries HTTP 429 with backoff / Retry-After when available.
+- Requests use `locale=en` and `currency=usd`.
+- Detail enrichment is API-first:
+  - `/<id>`
+  - `/item/<id>`
+  - `/items/<id>`
+  - `/fortnite/<id>`
+- HTML listing page parsing is fallback only for fields like published/refreshed date.
+- Images are fetched through the hidden bridge and displayed as local `blob:` URLs inside the page.

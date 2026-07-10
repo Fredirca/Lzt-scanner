@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Wrota CMD Scanner</title>
+  <title>Wrota CMD Scanner // API-aligned</title>
   <link rel="stylesheet" href="styles.css?v=cmd-1">
 </head>
 <body>
@@ -12,8 +12,8 @@
     <header class="topbar">
       <div>
         <div class="prompt"><span>C:\WROTA&gt;</span> LZT_CHECKER.EXE</div>
-        <h1>Wrota CMD Scanner</h1>
-        <p>one mixed global feed · unique accounts · multi-match badges · proxy image loader</p>
+        <h1>Wrota CMD Scanner // API-aligned</h1>
+        <p>one mixed global feed · unique accounts · multi-match badges · docs-aligned API client</p>
       </div>
       <div class="top-actions">
         <span id="status" class="status">READY</span>
@@ -25,8 +25,11 @@
       <aside class="panel config">
         <div class="panel-title">[01] CONFIG</div>
 
-        <label>PROXY URL</label>
-        <input id="proxyUrl" spellcheck="false">
+        <input id="proxyUrl" type="hidden">
+        <div class="connection-hidden">
+          <b>TRANSPORT:</b> hidden docs-aligned proxy bridge
+          <span>Cloudflare URL is not shown in the scanner UI.</span>
+        </div>
 
         <label>API KEY</label>
         <input id="apiKey" type="password" autocomplete="current-password" placeholder="paste lzt api key">
@@ -67,6 +70,8 @@
 
     <section class="panel controls">
       <div class="panel-title">[03] SCAN ARGS</div>
+      <div class="sort-note">API_CLIENT: bearer auth via proxy · 300/min-safe throttle · 429 retry · order primary</div>
+      <div class="sort-note">SENDS: order primary + order_by fallback · NEWEST = API order param + upload timestamp closest to current system/browser time.</div>
       <div class="args-grid">
         <label>ORDER
           <select id="order">

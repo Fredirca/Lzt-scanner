@@ -1,4 +1,9 @@
 const DEFAULT_PROXY="https://shiny-shape-49fd.flruming.workers.dev";
+const API_BASE="https://prod-api.lzt.market";
+const WEB_BASE="https://lzt.market";
+const MIN_REQUEST_GAP_MS=225; // docs rate limit: 300/min = one every 200ms; 225ms leaves safety margin
+const MAX_API_RETRIES=3;
+let lastRequestAt=0;
 
 const DEFAULT_TARGETS=[
   {param:"pickaxe[]",id:"pickaxe_lockjaw_og",label:"Raider’s Revenge OG Style"},
@@ -60,37 +65,66 @@ async function fetchTimeout(url,opts={},ms=45000){
   try{return await fetch(url,{...opts,signal:ac.signal});}
   finally{clearTimeout(t);}
 }
+async function rateLimitGate(){
+  const now=Date.now();
+  const wait=Math.max(0,MIN_REQUEST_GAP_MS-(now-lastRequestAt));
+  if(wait)await sleep(wait);
+  lastRequestAt=Date.now();
+}
+async function requestViaProxy(targetUrl,accept="application/json",expect="json"){
+  let lastErr;
+  for(let attempt=0;attempt<=MAX_API_RETRIES;attempt++){
+    await rateLimitGate();
+    const res=await fetchTimeout(proxyUrl(targetUrl),{headers:headers(accept)});
+    if(res.status===429){
+      const retryAfter=Number(res.headers.get("Retry-After")||0);
+      const backoff=(retryAfter?retryAfter*1000:700*(attempt+1));
+      log("429 throttle",{attempt:attempt+1,wait_ms:backoff});
+      await sleep(backoff);
+      continue;
+    }
+    if(!res.ok){
+      const txt=await res.text().catch(()=>"");
+      lastErr=new Error(`http ${res.status} ${txt.slice(0,120)}`);
+      if(res.status>=500&&attempt<MAX_API_RETRIES){
+        await sleep(600*(attempt+1));
+        continue;
+      }
+      throw lastErr;
+    }
+    if(expect==="text")return await res.text();
+    if(expect==="blob")return await res.blob();
+    const text=await res.text();
+    try{return JSON.parse(text);}
+    catch{return {raw:text};}
+  }
+  throw lastErr||new Error("request failed");
+}
 async function lztJson(path,params={}){
-  const u=new URL(`https://prod-api.lzt.market${path}`);
+  const u=new URL(`${API_BASE}${path}`);
   Object.entries(params).forEach(([k,v])=>{
     if(v===undefined||v===null||v==="")return;
     if(Array.isArray(v))v.forEach(x=>u.searchParams.append(k,x));
     else u.searchParams.append(k,v);
   });
-  const res=await fetchTimeout(proxyUrl(u.toString()),{headers:headers("application/json")});
-  if(res.status===429){const e=new Error("rate limited");e.rate=true;throw e;}
-  if(!res.ok)throw new Error(`api ${res.status}`);
-  const text=await res.text();
-  try{return JSON.parse(text)}catch{return {raw:text}}
+  log("api request",{path,order:params.order,order_by:params.order_by,page:params.page});
+  return await requestViaProxy(u.toString(),"application/json","json");
 }
 async function lztText(url){
-  const res=await fetchTimeout(proxyUrl(url),{headers:headers("text/html,*/*")});
-  if(!res.ok)throw new Error(`html ${res.status}`);
-  return await res.text();
+  return await requestViaProxy(url,"text/html,*/*","text");
 }
-function imgEndpoint(id,type){return `https://lzt.market/${id}/image?type=${type}`;}
+async function lztBlob(url){
+  return await requestViaProxy(url,"image/avif,image/webp,image/apng,image/*,*/*;q=0.8","blob");
+}
+function imgEndpoint(id,type){return `${WEB_BASE}/${id}/image?type=${type}`;}
 function imgProxyEndpoint(id,type){return proxyUrl(imgEndpoint(id,type));}
 
 async function loadImage(img,id,type){
   if(!$("loadImages").checked)return;
 
-  // Fetch through the hidden proxy transport, then host the bytes inside the page as a blob: URL.
-  // The visible <img> src becomes blob:<this-site-origin>/..., not a Cloudflare/LZT URL.
   try{
     img.closest(".imgwrap")?.classList.add("loading");
-    const res=await fetchTimeout(imgProxyEndpoint(id,type),{headers:headers("image/avif,image/webp,image/apng,image/*,*/*;q=0.8")},45000);
-    if(!res.ok)throw new Error(`img ${res.status}`);
-    const blob=await res.blob();
+    const blob=await lztBlob(imgEndpoint(id,type));
     if(!blob.type.startsWith("image/"))throw new Error(`not image ${blob.type||"unknown"}`);
     const old=blobUrls.get(img.id);
     if(old)URL.revokeObjectURL(old);
@@ -99,12 +133,14 @@ async function loadImage(img,id,type){
     img.src=url;
     img.dataset.hosted="page-blob";
     img.closest(".imgwrap")?.classList.remove("loading","failed");
-    return;
   }catch(e){
     img.closest(".imgwrap")?.classList.remove("loading");
     img.closest(".imgwrap")?.classList.add("failed");
+    if(!img.dataset.failCounted){
+      img.dataset.failCounted="1";
+      imgFails++;
+    }
     log("image hosting failed",{id,type,error:e.message});
-    imgFails++;
     renderStats();
   }
 }
@@ -221,8 +257,19 @@ function boolIcon(v){
 }
 function dateVal(v){
   if(!known(v))return null;
-  if(typeof v==="number"){const d=new Date((v>1e11?v:v*1000));return isNaN(d)?null:d;}
-  const d=new Date(String(v));return isNaN(d)?null:d;
+  const raw=String(v).trim();
+
+  // LZT often returns Unix timestamps as either numbers or numeric strings.
+  if(typeof v==="number" || /^\d{10,13}$/.test(raw)){
+    const n=Number(raw);
+    const d=new Date(n>1e11?n:n*1000);
+    return isNaN(d)?null:d;
+  }
+
+  // Some pages expose "Jul 9, 2026 at 10:14 PM" style cached titles.
+  const cleaned=raw.replace(/\bat\b/i,"").replace(/\s+/g," ").trim();
+  const d=new Date(cleaned);
+  return isNaN(d)?null:d;
 }
 function niceDate(v){const d=dateVal(v);return d?d.toISOString().slice(0,10):"Unknown";}
 function niceDateTime(v){
@@ -330,10 +377,18 @@ function sortList(list){
   const s=$("sort").value, order=$("order").value;
   const arr=list.slice();
 
-  // "Newest" means closest upload date+time to the user's current system/browser time.
-  // This is better than target order and better than page order.
-  const newestSort=(a,b)=>newestDistance(a)-newestDistance(b) || (uploadMs(b)-uploadMs(a)) || a.rank-b.rank;
-  const oldestSort=(a,b)=>(uploadMs(a)===-Infinity?Infinity:uploadMs(a))-(uploadMs(b)===-Infinity?Infinity:uploadMs(b)) || a.rank-b.rank;
+  const hasDate=x=>uploadMs(x)!==-Infinity;
+
+  // Real newest: upload timestamp closest to the current browser/system time.
+  // Unknown upload dates always sink below known upload dates.
+  const newestSort=(a,b)=>{
+    if(hasDate(a)!==hasDate(b))return hasDate(a)?-1:1;
+    return newestDistance(a)-newestDistance(b) || (uploadMs(b)-uploadMs(a)) || a.rank-b.rank;
+  };
+  const oldestSort=(a,b)=>{
+    if(hasDate(a)!==hasDate(b))return hasDate(a)?-1:1;
+    return uploadMs(a)-uploadMs(b) || a.rank-b.rank;
+  };
 
   if(s==="market"||s==="newest"){
     if(order==="price_to_up")arr.sort((a,b)=>(num(a.price)??Infinity)-(num(b.price)??Infinity));
@@ -468,10 +523,60 @@ async function pool(tasks,limit,onDone){
   await Promise.all(Array.from({length:Math.min(limit,tasks.length)},worker));
 }
 function paramsFor(t,page){
-  const p={page,order_by:$("order").value,currency:"usd"};
+  const ord=$("order").value;
+  const p={
+    page,
+    order:ord,       // docs resource ordering parameter
+    order_by:ord,    // compatibility fallback for observed marketplace URLs
+    currency:"usd",
+    locale:"en"
+  };
+  const q=$("q")?.value?.trim();
+  const min=num($("minPrice")?.value);
+  const max=num($("maxPrice")?.value);
+  if(q)p.title=q;
+  if(min!==null)p.pmin=min;
+  if(max!==null)p.pmax=max;
   p[t.param]=t.id;
   return p;
 }
+
+async function enrichApi(r){
+  // API-first detail enrichment. Different LZT deployments have used different detail paths,
+  // so try cheap known candidates and keep the first usable JSON response.
+  const candidates=[
+    `/${r.id}`,
+    `/item/${r.id}`,
+    `/items/${r.id}`,
+    `/fortnite/${r.id}`
+  ];
+  for(const path of candidates){
+    try{
+      const data=await lztJson(path,{locale:"en",currency:"usd"});
+      if(data && typeof data==="object" && !data.raw){
+        r.raw.detail_api=data;
+        const detailNorm=normalize({item_id:r.id},data,r.labels,r.rank);
+        Object.assign(r,{
+          title:detailNorm.title||r.title,
+          price:detailNorm.price||r.price,
+          seller:detailNorm.seller||r.seller,
+          country:detailNorm.country||r.country,
+          skins:detailNorm.skins||r.skins,
+          level:detailNorm.level||r.level,
+          email:detailNorm.email||r.email,
+          uploaded:detailNorm.uploaded!=="Unknown"?detailNorm.uploaded:r.uploaded,
+          updated:detailNorm.updated!=="Unknown"?detailNorm.updated:r.updated
+        });
+        return r;
+      }
+    }catch(e){
+      // Keep quiet for 404-ish candidate misses; debug only.
+      log("detail candidate miss",{id:r.id,path,error:e.message});
+    }
+  }
+  return r;
+}
+
 async function scan(){
   if(!targets.length){toast("no targets");return;}
   results=[];imgFails=0;renderFeed();status("SCANNING");$("scanBtn").disabled=true;
@@ -479,11 +584,13 @@ async function scan(){
   const threads=Math.max(1,Math.min(8,Number($("threads").value)||3));
   const delay=Math.max(0,Math.min(15000,Number($("delay").value)||0));
   const tasks=[];
+  log("docs-aligned mode",{auth:"Authorization: Bearer via proxy", order:$("order").value, sent_params:["order","order_by"], throttle_ms:MIN_REQUEST_GAP_MS, retry_429:true});
   for(let page=1;page<=pages;page++){
     for(const target of targets){
       tasks.push(async()=>{
         if(delay)await sleep(delay);
-        const data=await lztJson("/fortnite",paramsFor(target,page));
+        const params=paramsFor(target,page);
+        const data=await lztJson("/fortnite",params);
         return {target,page,items:extractItems(data)};
       });
     }
@@ -507,12 +614,16 @@ async function scan(){
     if($("enrich").checked){
       const enrichTasks=results.map(r=>async()=>{
         try{
-          const html=await lztText(`https://lzt.market/${r.id}/`);
+          await enrichApi(r);
+        }catch(e){log("api enrich failed",{id:r.id,error:e.message});}
+        try{
+          // HTML page is fallback for published_date/refreshed_date when API doesn't expose it.
+          const html=await lztText(`${WEB_BASE}/${r.id}/`);
           applyHtml(r,html);
-        }catch(e){log("enrich failed",{id:r.id,error:e.message});}
+        }catch(e){log("html enrich failed",{id:r.id,error:e.message});}
         return r;
       });
-      await pool(enrichTasks,Math.min(threads,4),(done,total,idx,res)=>{
+      await pool(enrichTasks,Math.min(threads,3),(done,total,idx,res)=>{
         renderFeed();
         progress(done,total);
       });
@@ -530,8 +641,16 @@ async function scan(){
   }
 }
 async function test(){
-  try{status("TESTING");await lztJson("/fortnite",{page:1,order_by:"pdate_to_down_upload",currency:"usd"});status("READY");toast("connection ok");}
-  catch(e){status("ERROR");log("test failed",{error:e.message});}
+  try{
+    status("TESTING");
+    await lztJson("/",{locale:"en"});
+    await lztJson("/fortnite",{page:1,order:"pdate_to_down_upload",order_by:"pdate_to_down_upload",currency:"usd",locale:"en"});
+    status("READY");
+    toast("connection ok");
+  }catch(e){
+    status("ERROR");
+    log("test failed",{error:e.message});
+  }
 }
 function bind(){
   loadCfg();
