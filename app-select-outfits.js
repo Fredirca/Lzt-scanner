@@ -462,6 +462,70 @@ function combineImageLists(...lists){
   return out.sort((a,b)=>lockerImageScore(b)-lockerImageScore(a)).slice(0,24);
 }
 
+
+const imageBlobCache=new Map();
+
+function proxiedUrl(target){
+  return `${DEFAULT_PROXY_URL.replace(/\/+$/,"")}/proxy?url=${encodeURIComponent(target)}`;
+}
+
+async function loadImageViaProxy(img,url){
+  if(!img || !url)return;
+
+  // Use cached blob URL if we already fetched this image.
+  if(imageBlobCache.has(url)){
+    img.src=imageBlobCache.get(url);
+    img.classList.add("loaded");
+    return;
+  }
+
+  img.classList.add("loading");
+
+  try{
+    const response=await fetchWithTimeout(proxiedUrl(url),{
+      method:"GET",
+      headers:{
+        "Accept":"image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        "X-LZT-Key":token()
+      }
+    },45000);
+
+    if(!response.ok)throw new Error(`image ${response.status}`);
+    const blob=await response.blob();
+
+    if(!blob || !blob.type.startsWith("image/")){
+      throw new Error("not an image");
+    }
+
+    const objectUrl=URL.createObjectURL(blob);
+    imageBlobCache.set(url,objectUrl);
+    img.src=objectUrl;
+    img.classList.remove("loading");
+    img.classList.add("loaded");
+  }catch(error){
+    // Fallback to direct URL. Some public CDN images work this way.
+    img.src=url;
+    img.classList.remove("loading");
+    img.classList.add("fallback");
+  }
+}
+
+function hydrateInventoryImages(root=document){
+  root.querySelectorAll("img[data-proxy-img]").forEach(img=>{
+    const url=img.dataset.proxyImg;
+    if(!url || img.dataset.loaded==="1")return;
+    img.dataset.loaded="1";
+    loadImageViaProxy(img,url);
+  });
+}
+
+function clearImageBlobCache(){
+  for(const url of imageBlobCache.values()){
+    try{URL.revokeObjectURL(url);}catch{}
+  }
+  imageBlobCache.clear();
+}
+
 function renderInventoryImages(caseItem){
   const enabled=$("showInventoryImages") ? $("showInventoryImages").checked : true;
   const images=Array.isArray(caseItem.image_urls) ? caseItem.image_urls : [];
@@ -472,7 +536,7 @@ function renderInventoryImages(caseItem){
   return `<div class="inventory-gallery">
     ${images.map((url,index)=>`
       <a class="inventory-thumb" href="${esc(url)}" target="_blank" rel="noopener" title="Open inventory image ${index+1}">
-        <img src="${esc(url)}" loading="lazy" alt="Inventory checker image ${index+1}" referrerpolicy="no-referrer">
+        <img src="" data-proxy-img="${esc(url)}" loading="lazy" alt="Locker inventory image ${index+1}" referrerpolicy="no-referrer"><span class="image-loader">Loading locker image…</span>
       </a>
     `).join("")}
   </div>
@@ -629,6 +693,7 @@ function compactCase(item){
     url:id?`https://lzt.market/${id}/`:"",
     image_urls:Array.isArray(item.image_urls)?item.image_urls.slice(0,12):[],
     matched_filters:Array.isArray(filters)?filters:[String(filters)],
+    scan_rank:item.scan_rank ?? 0,
     note:item.note||"Matched by selected cosmetic filter"
   };
 }
@@ -703,7 +768,7 @@ function extractItems(data){
   return out;
 }
 function paramsForCosmetic(filter,page){
-  const params={page,order_by:marketOrderValue(),currency:"usd"};
+  const params={page,order_by:activeOrderBy(),currency:"usd"};
   params[filter.param]=filter.id;
   return filterParamsForApi(params);
 }
@@ -721,6 +786,7 @@ function progress(done,total,label){
 }
 
 let currentViewMode="cards";
+let lastMarketOrderValue="pdate_to_down_upload";
 
 
 function dateValue(value){
@@ -769,8 +835,22 @@ function niceDate(value){
   return d ? d.toISOString().slice(0,10) : cleanDate(value);
 }
 
-function marketOrderValue(){
+
+function setMarketOrder(orderValue, displaySort="market"){
+  if($("marketOrder")) $("marketOrder").value=orderValue;
+  if($("sortFilter")) $("sortFilter").value=displaySort;
+  updateOrderChips();
+  refreshFilteredResults();
+}
+
+function activeOrderBy(){
+  // The API order is the source of truth for newest uploaded.
+  // Local uploaded dates are often absent in result payloads, so local sorting can be wrong.
   return $("marketOrder")?.value || "pdate_to_down_upload";
+}
+
+function marketOrderValue(){
+  return activeOrderBy();
 }
 
 function numericValue(value){
@@ -917,6 +997,7 @@ function passesFilters(item,state=filterState()){
 function sortResults(list,state=filterState()){
   const copy=list.slice();
   const num=(item,key)=>fieldNumber(item,key) ?? -Infinity;
+  if(state.sort==="market") copy.sort((a,b)=>(a.scan_rank??0)-(b.scan_rank??0));
 
   if(state.sort==="uploaded_desc") copy.sort((a,b)=>dateCompareValue(b,"uploaded_at")-dateCompareValue(a,"uploaded_at"));
   if(state.sort==="uploaded_asc") copy.sort((a,b)=>dateCompareValue(a,"uploaded_at")-dateCompareValue(b,"uploaded_at"));
@@ -997,8 +1078,8 @@ function resetListingFilters(){
     if($(id)) $(id).value="";
   });
   if($("emailFilter")) $("emailFilter").value="";
-  if($("sortFilter")) $("sortFilter").value="market";
   if($("marketOrder")) $("marketOrder").value="pdate_to_down_upload";
+  if($("sortFilter")) $("sortFilter").value="market";
   if($("quickOrder")) $("quickOrder").value="";
   ["hideUnknownPrice","hideUnknownSeller","hideUnknownCountry","onlyFullInfo"].forEach(id=>{
     if($(id)) $(id).checked=false;
@@ -1011,8 +1092,8 @@ function applyPreset(kind){
   resetListingFilters();
 
   if(kind==="fresh"){
-    if($("sortFilter")) $("sortFilter").value="market";
-  if($("marketOrder")) $("marketOrder").value="pdate_to_down_upload";
+    if($("marketOrder")) $("marketOrder").value="pdate_to_down_upload";
+  if($("sortFilter")) $("sortFilter").value="market";
   if($("quickOrder")) $("quickOrder").value="";
     if($("hideUnknownPrice")) $("hideUnknownPrice").checked=true;
   }
@@ -1070,13 +1151,29 @@ function bindFilterUi(){
   if($("applyPresetPremium")) $("applyPresetPremium").onclick=()=>applyPreset("premium");
   document.querySelectorAll("[data-order-preset]").forEach(btn=>{
     btn.onclick=()=>{
-      if($("marketOrder")) $("marketOrder").value=btn.dataset.orderPreset;
-      if($("sortFilter")) $("sortFilter").value=btn.dataset.orderPreset.includes("price_to_up") ? "price_asc" : btn.dataset.orderPreset.includes("price_to_down") ? "price_desc" : btn.dataset.orderPreset.includes("pdate_to_down") ? "uploaded_desc" : "market";
-      refreshFilteredResults();
+      const order=btn.dataset.orderPreset;
+      if(order==="pdate_to_down_upload") setMarketOrder(order,"market");
+      else if(order==="pdate_to_up_upload") setMarketOrder(order,"market");
+      else if(order==="price_to_up") setMarketOrder(order,"price_asc");
+      else if(order==="price_to_down") setMarketOrder(order,"price_desc");
+      else if(order==="pdate_to_down") setMarketOrder(order,"market");
+      else setMarketOrder(order,"market");
       toast(`${btn.textContent.trim()} order selected`);
+      toast("Run scan again to apply marketplace order.");
     };
   });
 
+  if($("marketOrder")){
+    lastMarketOrderValue=$("marketOrder").value;
+    $("marketOrder").addEventListener("change",()=>{
+      updateOrderChips();
+      refreshFilteredResults();
+      if(currentResults().length) toast("Run scan again to apply the new marketplace order.");
+      lastMarketOrderValue=$("marketOrder").value;
+    });
+  }
+
+  // marketOrder changed handler above keeps API order honest.
   if($("viewCardsBtn")) $("viewCardsBtn").onclick=()=>{
     currentViewMode="cards";
     $("viewCardsBtn").classList.add("active");
@@ -1176,6 +1273,7 @@ function renderResults(items=null){
   box.className=currentViewMode==="compact" ? "cards compact-cards" : "cards";
   box.innerHTML=list.map(card).join("");
   wireCopyButtons();
+  hydrateInventoryImages(box);
 }
 
 function renderCases(){
@@ -1193,7 +1291,7 @@ function updateStats(){
 }
 async function testKey(){
   setStatus("Testing","warn");if($("testBtn"))$("testBtn").disabled=true;
-  try{await lztGet("/fortnite",{page:1,order_by:"pdate_to_down_upload",currency:"usd"});setStatus("Connected","ok");toast("Key accepted");}
+  try{await lztGet("/fortnite",{page:1,order_by:activeOrderBy(),currency:"usd"});setStatus("Connected","ok");toast("Key accepted");}
   catch(error){setStatus(error.message==="Rate limited"?"Rate limited":"Check failed","bad");toast(error.message==="Rate limited"?"Rate limited. Try again later.":`Key test failed: ${error.message}`);}
   finally{if($("testBtn"))$("testBtn").disabled=false;}
 }
@@ -1271,6 +1369,7 @@ async function scan(){
     }
   }
 
+  clearImageBlobCache();
   saveCurrentResults([]);
   renderResults([]);
   setStatus("Turbo scanning","warn");
@@ -1304,10 +1403,12 @@ async function scan(){
       setSubtitle(`${visibleResults().length}/${found.size} listing(s) shown after filters.`);
     });
 
-    let quickResults=[...found.values()].map(pack=>{
+    let quickResults=[...found.values()].map((pack,scanIndex)=>{
       const record=extractListingFields(pack.summary,{},pack.labels);
       record.note=enrichDetails ? "Fast result; enriching details" : "Fast result";
-      return compactCase(record);
+      const compact=compactCase(record);
+      compact.scan_rank=scanIndex;
+      return compact;
     });
 
     saveCurrentResults(quickResults);

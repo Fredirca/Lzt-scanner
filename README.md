@@ -155,3 +155,15 @@ Then it extracts locker/inventory images from the page HTML, including:
 - image URLs embedded in script/JSON
 
 This is separate from API detail image extraction, because LZT often shows the locker directly on the listing page.
+
+
+## Image and order fixes
+
+Fixes in this build:
+
+- Locker images are fetched through the proxy as blobs instead of direct hotlinking.
+- Image requests include `X-LZT-Key` where the proxy supports it.
+- If proxy image loading fails, the app falls back to direct CDN image URLs.
+- Newest uploaded is now treated as a marketplace/API order, not a local date sort.
+- Changing marketplace order tells you to run scan again, because `order_by` is applied during scan requests.
+- Result order preserves the API scan order when Display sort is set to Marketplace order.

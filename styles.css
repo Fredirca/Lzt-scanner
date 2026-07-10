@@ -491,3 +491,41 @@ input{width:100%;border:1px solid var(--line);border-radius:16px;padding:14px 15
 .compact-result .inventory-section{
   display:none;
 }
+
+
+.order-help{
+  margin-top:12px;
+  color:var(--muted);
+  font-size:12px;
+  font-weight:850;
+}
+.inventory-thumb{
+  display:grid;
+  place-items:center;
+}
+.inventory-thumb img[src=""]{
+  opacity:0;
+}
+.inventory-thumb img.loading + .image-loader,
+.inventory-thumb:has(img.loading) .image-loader{
+  opacity:1;
+}
+.image-loader{
+  position:absolute;
+  inset:0;
+  display:grid;
+  place-items:center;
+  color:var(--muted);
+  font-size:12px;
+  font-weight:900;
+  background:linear-gradient(135deg,rgba(141,183,255,.08),rgba(96,229,177,.06));
+}
+.inventory-thumb img.loaded,
+.inventory-thumb img.fallback{
+  opacity:1;
+}
+
+.inventory-thumb img.loaded ~ .image-loader,
+.inventory-thumb img.fallback ~ .image-loader{
+  display:none;
+}
