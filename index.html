@@ -2,142 +2,155 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Wrota LZT Checker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wrota Review Console</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="glow glow-a"></div>
-  <div class="glow glow-b"></div>
-
-  <main class="wrap">
-    <nav class="nav">
+  <div class="shell">
+    <aside class="sidebar">
       <div class="brand">
-        <div class="logo">W</div>
+        <div class="brand-mark">W</div>
         <div>
-          <strong>Wrota LZT Checker</strong>
-          <span>private review scanner</span>
+          <h1>Wrota</h1>
+          <p>Review Console</p>
         </div>
       </div>
-      <div class="nav-links">
-        <a href="#scanner">Scanner</a>
-        <a href="#watchlist">Watchlist</a>
+
+      <nav class="nav">
+        <a href="#scanner" class="active">Scanner</a>
+        <a href="#results">Results</a>
         <a href="#cases">Cases</a>
+      </nav>
+
+      <div class="mini-panel">
+        <span class="mini-label">Session</span>
+        <strong id="sessionState">Not connected</strong>
       </div>
-    </nav>
+    </aside>
 
-    <header class="hero">
-      <div class="hero-copy">
-        <p class="eyebrow">GitHub Pages + optional CORS proxy</p>
-        <h1>Wrota LZT Checker</h1>
-        <p class="sub">
-          Enter your LZT API key each visit, scan on demand, and generate clean private evidence reports.
-        </p>
-        <div class="hero-actions">
-          <a class="button" href="#scanner">Start scanning</a>
-          <a class="button secondary" href="#cases">View saved cases</a>
+    <main class="main">
+      <section class="hero" id="scanner">
+        <div>
+          <span class="eyebrow">Fortnite listing review</span>
+          <h2>OG Style Scanner</h2>
+          <p class="subtle">Searches selected OG cosmetics using dedicated listing filters.</p>
         </div>
-      </div>
-
-      <div class="hero-panel">
-        <div class="panel-row">
-          <span class="dot ok"></span>
-          <span>Read-only checks</span>
+        <div class="status-card">
+          <span id="statusDot" class="dot idle"></span>
+          <div>
+            <small>Status</small>
+            <strong id="status">Ready</strong>
+          </div>
         </div>
-        <div class="panel-row">
-          <span class="dot warn"></span>
-          <span>API key not saved</span>
+      </section>
+
+      <section class="panel access-panel">
+        <form id="accessForm" autocomplete="on">
+          <div class="panel-head">
+            <div>
+              <h3>Access</h3>
+              <p>Enter your API key for this browser.</p>
+            </div>
+          </div>
+
+          <input class="visually-hidden" type="text" name="username" autocomplete="username" value="wrota-lzt-api" tabindex="-1" aria-hidden="true">
+
+          <div class="key-row">
+            <input id="apiToken" name="lzt_api_key" type="password" autocomplete="current-password" placeholder="LZT API key">
+            <button id="toggleKey" class="ghost" type="button">Show</button>
+          </div>
+
+          <div class="actions">
+            <button id="testBtn" class="secondary" type="submit">Test key</button>
+            <button id="scanBtn" class="primary" type="button">Scan now</button>
+            <button id="clearKeyBtn" class="ghost" type="button">Clear</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h3>OG filters</h3>
+            <p>Focused presets only. Normal styles are not included.</p>
+          </div>
+          <span class="count-pill" id="filterCount">0 active</span>
         </div>
-        <div class="panel-row">
-          <span class="dot blue"></span>
-          <span>JSON evidence export</span>
+        <div id="filterGrid" class="filter-grid"></div>
+      </section>
+
+      <section class="panel compact">
+        <details>
+          <summary>Scan settings</summary>
+          <div class="settings">
+            <label>
+              <span>Depth</span>
+              <input id="pagesPerFilter" type="number" value="2" min="1" max="25">
+            </label>
+            <label>
+              <span>Delay</span>
+              <input id="requestDelay" type="number" value="2500" min="500" max="15000">
+            </label>
+            <label>
+              <span>Full detail pass</span>
+              <input id="fetchDetails" type="checkbox">
+            </label>
+            <label>
+              <span>Stop on rate limit</span>
+              <input id="stopOn429" type="checkbox" checked>
+            </label>
+          </div>
+        </details>
+      </section>
+
+      <section class="stats">
+        <div class="stat"><span>Matches</span><strong id="statMatches">0</strong></div>
+        <div class="stat"><span>Saved cases</span><strong id="statCases">0</strong></div>
+        <div class="stat"><span>Last scan</span><strong id="statLastScan">—</strong></div>
+      </section>
+
+      <section class="panel" id="results">
+        <div class="panel-head">
+          <div>
+            <h3>Results</h3>
+            <p id="resultsSubtitle">Run a scan to review matching listings.</p>
+          </div>
+          <button id="exportResultsBtn" class="ghost small" type="button">Export results</button>
         </div>
-      </div>
-    </header>
-
-    <section class="notice">
-      <strong>Heads up:</strong>
-      Direct browser calls may fail with CORS. If you see “Load failed”, deploy the included
-      <code>cloudflare-worker.js</code>, then paste the Worker URL below.
-    </section>
-
-    <section id="scanner" class="grid">
-      <div class="card glass">
-        <div class="card-title">
-          <h2>Session access</h2>
-          <span class="pill">not stored</span>
+        <div id="progressWrap" class="progress-wrap hidden">
+          <div class="progress-top">
+            <span id="progressLabel">Scanning</span>
+            <span id="progressNumber">0%</span>
+          </div>
+          <div class="progress"><div id="progressBar"></div></div>
         </div>
-
-        <label>LZT API key</label>
-        <input id="apiToken" type="password" autocomplete="off" placeholder="Paste API key each visit">
-        <p class="mini-note">Proxy is built in automatically. You only need your LZT API key.</p>
-<div class="actions">
-          <button id="testBtn">Test key</button>
-          <button id="scanBtn" class="secondary">Scan now</button>
-          <button id="clearTokenBtn" class="ghost">Clear key</button>
+        <div id="resultsBox" class="empty-state">
+          <div class="empty-icon">⌕</div>
+          <h4>No results yet</h4>
+          <p>Start a scan to populate this workspace.</p>
         </div>
+      </section>
 
-        <p id="status" class="status">Not tested.</p>
-      </div>
-
-      <div id="watchlist" class="card glass">
-        <div class="card-title">
-          <h2>OG style filters</h2>
-          <button id="resetTermsBtn" class="ghost small">Reset</button>
+      <section class="panel" id="cases">
+        <div class="panel-head">
+          <div>
+            <h3>Saved cases</h3>
+            <p>Reviewed matches kept in this browser.</p>
+          </div>
+          <div class="split">
+            <button id="exportCasesBtn" class="ghost small" type="button">Export cases</button>
+            <button id="clearCasesBtn" class="ghost danger small" type="button">Clear</button>
+          </div>
         </div>
-
-        <div id="watchlistBox" class="chips"></div>
-
-        <div class="add">
-          <input id="newTerm" placeholder="Add OG fallback term">
-          <button id="addTermBtn" class="secondary">Add</button>
+        <div id="casesBox" class="empty-state small-empty">
+          <div class="empty-icon">□</div>
+          <h4>No saved cases</h4>
+          <p>Matched listings will appear here after scanning.</p>
         </div>
-      </div>
-    </section>
-
-    <section class="card glass">
-      <div class="card-title">
-        <h2>Scan settings</h2>
-        <span class="pill">editable</span>
-      </div>
-
-      <div class="settings">
-        <label>API base<input id="apiBase" value="https://prod-api.lzt.market"></label>
-        <label>Category path<input id="categoryPath" value="/fortnite"></label>
-        <label>Sort<input id="orderBy" value="pdate_to_down_upload"></label>
-        <label>Currency<input id="currency" value="usd"></label>
-        <label>Max terms<input id="maxTerms" type="number" value="15" min="1" max="50"></label>
-        <label>Pages per term<input id="pagesPerTerm" type="number" value="2" min="1" max="25"></label>
-        <label>Newest safety pages<input id="newestPages" type="number" value="0" min="0" max="25"></label>
-        <label>Delay ms<input id="requestDelay" type="number" value="2500" min="500" max="15000"></label>
-        <label class="checkbox-row"><span>Stop on 429</span><input id="stopOn429" type="checkbox" checked></label>
-      </div>
-    </section>
-
-    <section class="card glass">
-      <div class="card-title">
-        <h2>Results</h2>
-        <span id="badge" class="badge">No scan yet</span>
-      </div>
-      <div id="results" class="empty">Run a scan to see matching listings here.</div>
-    </section>
-
-    <section id="cases" class="card glass">
-      <div class="card-title">
-        <h2>Saved cases</h2>
-        <div class="actions compact">
-          <button id="exportJsonBtn" class="secondary small">Export JSON</button>
-          <button id="clearCasesBtn" class="danger small">Clear</button>
-        </div>
-      </div>
-      <div id="casesBox" class="empty">No saved cases yet.</div>
-    </section>
-
-    <footer>
-      <span>Wrota LZT Checker</span>
-      <span>Use neutral language like “suspected account-sale violation” until reviewed.</span>
-    </footer>
-  </main>
+      </section>
+    </main>
+  </div>
 
   <script src="app.js"></script>
 </body>
