@@ -1,9 +1,54 @@
-const DEFAULT_PROXY_URL = "https://shiny-shape-49fd.flruming.workers.dev";
+const DEFAULT_PROXY_URL="https://shiny-shape-49fd.flruming.workers.dev";
 const DEFAULT_TERMS=[
-"og renegade raider","renegade raider","og skull trooper","skull trooper","purple skull",
-"og ghoul trooper","ghoul trooper","pink ghoul","og aerial assault","aerial assault trooper",
-"aerial assault","og raiders revenge","raider's revenge","raiders revenge","raider revenge"
+"og renegade raider",
+"og skull trooper",
+"purple skull",
+"og ghoul trooper",
+"pink ghoul",
+"og aerial assault trooper",
+"og aerial assault",
+"og raiders revenge",
+"raider's revenge"
 ];
+
+const DEFAULT_COSMETIC_FILTERS = [
+  {
+    label: "OG Renegade Raider",
+    type: "skin",
+    param: "skin[]",
+    id: "028_athena_commando_f",
+    aliases: ["og renegade raider"]
+  },
+  {
+    label: "OG Skull Trooper Style / Purple Skull",
+    type: "skin",
+    param: "skin[]",
+    id: "030_athena_commando_m_halloween_og",
+    aliases: ["og skull trooper", "purple skull"]
+  },
+  {
+    label: "OG Ghoul Trooper Style / Pink Ghoul",
+    type: "skin",
+    param: "skin[]",
+    id: "029_athena_commando_f_halloween_og",
+    aliases: ["og ghoul trooper", "pink ghoul"]
+  },
+  {
+    label: "OG Aerial Assault Trooper",
+    type: "skin",
+    param: "skin[]",
+    id: "017_athena_commando_m",
+    aliases: ["og aerial assault trooper", "og aerial assault"]
+  },
+  {
+    label: "OG Raider's Revenge",
+    type: "pickaxe",
+    param: "pickaxe[]",
+    id: "pickaxe_id_027_scavenger",
+    aliases: ["og raiders revenge", "raider's revenge"]
+  }
+];
+
 const K={terms:"wrota_lzt_terms_v1",cases:"wrota_lzt_cases_v1"};
 const $=id=>document.getElementById(id);
 let sessionKey="";
@@ -19,7 +64,16 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 function renderTerms(){
   $("watchlistBox").innerHTML="";
-  for(const term of terms()){
+
+  for(const filter of defaultCosmeticFilters()){
+    const chip=document.createElement("span");
+    chip.className="term";
+    chip.innerHTML=`${esc(filter.label)} <small>${esc(filter.param)}=${esc(filter.id)}</small>`;
+    $("watchlistBox").appendChild(chip);
+  }
+
+  const customTerms = terms().filter(t => !DEFAULT_TERMS.includes(t));
+  for(const term of customTerms){
     const chip=document.createElement("span");
     chip.className="term";
     chip.innerHTML=`${esc(term)} <button title="Remove">×</button>`;
@@ -78,21 +132,39 @@ function fields(summary,detail){
   };
 }
 
+
+async function fetchWithTimeout(url, options={}, timeoutMs=45000){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try{
+    return await fetch(url, {...options, signal: controller.signal});
+  }catch(e){
+    if(e.name === "AbortError") throw new Error("Request timed out after 45s");
+    throw e;
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
 async function lztGet(p,params={}){
   const k=key(); if(!k)throw new Error("Paste your LZT API key first.");
   const base=$("apiBase").value.trim().replace(/\/+$/,"");
-  const proxy=($("proxyUrl").value.trim() || DEFAULT_PROXY_URL).replace(/\/+$/,"");
+  const proxy=DEFAULT_PROXY_URL.replace(/\/+$/,"");
   const direct=new URL(base+p);
-  Object.entries(params).forEach(([x,v])=>{if(v!==undefined&&v!==null&&v!=="")direct.searchParams.set(x,v);});
+  Object.entries(params).forEach(([x,v])=>{
+    if(v===undefined||v===null||v==="") return;
+    if(Array.isArray(v)) v.forEach(one => direct.searchParams.append(x, one));
+    else direct.searchParams.append(x, v);
+  });
   let url=direct.toString(), opts={method:"GET",headers:{Authorization:`Bearer ${k}`,Accept:"application/json"}};
   if(proxy){
     const u=new URL(proxy+"/proxy"); u.searchParams.set("url",direct.toString());
     url=u.toString(); opts={method:"GET",headers:{"X-LZT-Key":k,"X-LZT-Token":k,Accept:"application/json"}};
   }
   let res;
-  try{res=await fetch(url,opts);}catch(e){throw new Error("Load failed. This is usually CORS. Add your Cloudflare Worker proxy URL, then try again.");}
+  try{res=await fetchWithTimeout(url,opts,45000);}catch(e){throw new Error("Load failed. This is usually CORS. Add your Cloudflare Worker proxy URL, then try again.");}
   if(res.status===401)throw new Error("401 from LZT. API key invalid/expired.");
-  if(res.status===429)throw new Error("429 from LZT. Rate limited.");
+  if(res.status===429){const retry=res.headers.get("Retry-After")||res.headers.get("X-RateLimit-Reset")||""; const msg=retry?`429 from LZT. Rate limited. Retry/reset: ${retry}`:"429 from LZT. Rate limited."; const err=new Error(msg); err.isRateLimit=true; throw err;}
   if(!res.ok)throw new Error(`Request failed: HTTP ${res.status}`);
   return await res.json();
 }
@@ -102,64 +174,81 @@ async function testKey(){
   try{
     const data=await lztGet($("categoryPath").value.trim(),{page:1,order_by:$("orderBy").value.trim(),currency:$("currency").value.trim()});
     $("status").textContent=`Key works. First page returned ${extractItems(data).length} item(s).`;
-  }catch(e){$("status").textContent="Key test failed: "+e.message;}
+  }catch(e){$("status").textContent = String(e.message).includes("429")
+      ? "Key test hit LZT rate limit. The key may still be valid. Stop scanning for a while, then test again with lower pages/delay."
+      : "Key test failed: " + e.message;}
 }
 
 async function detail(id,fallback){
-  if(!/^\d+$/.test(String(id)))return {error:"No numeric item id",summary_only:fallback};
-  try{return await lztGet(`/${id}`);}catch(e){return {error:"Detail fetch failed",exception:e.message,summary_only:fallback};}
+  if(!/^\d+$/.test(String(id))) return {error:"No numeric item id",summary_only:fallback};
+  try{
+    return await lztGet(`/${id}`);
+  }catch(e){
+    return {error:"Detail fetch failed or timed out",exception:e.message,summary_only:fallback};
+  }
 }
 
 async function scan(){
-  const maxTerms=Math.max(1,Math.min(50,Number($("maxTerms").value||25)));
-  const pagesPerTerm=Math.max(1,Math.min(25,Number($("pagesPerTerm")?.value||5)));
-  const newestPages=Math.max(1,Math.min(25,Number($("newestPages")?.value||3)));
+  const pagesPerFilter=Math.max(1,Math.min(25,Number($("pagesPerTerm")?.value||2)));
+  const newestPages=Math.max(0,Math.min(25,Number($("newestPages")?.value||1)));
+  const requestDelay=Math.max(500,Math.min(15000,Number($("requestDelay")?.value||2500)));
+  const stopOn429=Boolean($("stopOn429")?.checked);
 
-  const ts=terms().slice(0,maxTerms), found=new Map(), errors=[];
-  const totalSearches=(ts.length*pagesPerTerm)+newestPages;
+  const filters=defaultCosmeticFilters();
+  const found=new Map(), errors=[];
+  const totalSearches=(filters.length*pagesPerFilter)+newestPages;
   let completed=0;
 
   function progress(label){
     completed++;
     badge(`Scanning ${completed}/${totalSearches}`,"warn");
-    $("results").innerHTML=`<p class='empty'>${esc(label)}<br>Checking existing listings across multiple pages. Keep this tab open.</p>`;
+    $("results").innerHTML=`<p class='empty'>${esc(label)}<br>Using LZT cosmetic filters like <code>skin[]=...</code>, not title search.</p>`;
   }
 
   badge("Scanning...","warn");
-  $("results").innerHTML="<p class='empty'>Starting existing-listings scan. Keep this tab open.</p>";
+  $("results").innerHTML="<p class='empty'>Starting cosmetic-filter scan. Keep this tab open.</p>";
 
-  // Search older existing listings by paging through every watchlist term.
-  for(const term of ts){
-    for(let page=1; page<=pagesPerTerm; page++){
+  // Search using LZT cosmetic filters: skin[]=ID / pickaxe[]=ID.
+  // This avoids title-only hits and targets accounts that actually match the selected cosmetic filter.
+  for(const filter of filters){
+    for(let page=1; page<=pagesPerFilter; page++){
       try{
-        const data=await lztGet($("categoryPath").value.trim(),{
-          page,
-          order_by:$("orderBy").value.trim(),
-          currency:$("currency").value.trim(),
-          title:term
-        });
-
+        const data=await lztGet($("categoryPath").value.trim(), searchParamsForCosmeticFilter(filter, page));
         const items=extractItems(data);
+
         for(const item of items){
           const id=itemId(item);
-          if(id&&matched(item).length)found.set(id,item);
+          if(!id) continue;
+
+          // Because this came from a skin[]/pickaxe[] filter, keep it even if the title doesn't mention the skin.
+          const existing=found.get(id) || item;
+          existing._wrotaMatchedFilters = [...new Set([...(existing._wrotaMatchedFilters || []), filter.label])];
+          existing._wrotaExpectedAliases = [...new Set([...(existing._wrotaExpectedAliases || []), ...expectedAliasesForFilter(filter)])];
+          found.set(id, existing);
         }
 
-        progress(`Term: ${term} · page ${page}/${pagesPerTerm} · found ${found.size} unique match(es)`);
+        progress(`${filter.label} · ${filter.param}=${filter.id} · page ${page}/${pagesPerFilter} · found ${found.size} unique match(es)`);
 
-        // If the API returned no items for this term/page, later pages are unlikely to help.
         if(!items.length) break;
-
-        await sleep(350);
+        await sleep(requestDelay);
       }catch(e){
-        errors.push({term,page,error:e.message});
-        progress(`Error on term: ${term} · page ${page}`);
-        await sleep(350);
+        errors.push({filter:filter.label,param:filter.param,id:filter.id,page,error:e.message});
+        progress(`Error on ${filter.label} · page ${page}`);
+
+        if((e.isRateLimit || String(e.message).includes("429")) && stopOn429){
+          renderResults([], errors);
+          badge("Rate limited", "warn");
+          $("results").innerHTML += "<p class='empty'>LZT rate-limited this key/IP. Lower pages, raise Delay ms, then try again later.</p>";
+          return;
+        }
+
+        await sleep(requestDelay);
       }
     }
   }
 
-  // Also scan multiple newest pages, because some listings may not include the exact title term.
+  // Optional newest page check remains only as a safety net, using existing text watchlist.
+  // Set Newest pages to 0 if you want cosmetic-filter-only scans.
   for(let page=1; page<=newestPages; page++){
     try{
       const data=await lztGet($("categoryPath").value.trim(),{
@@ -171,18 +260,28 @@ async function scan(){
       const items=extractItems(data);
       for(const item of items){
         const id=itemId(item);
-        if(id&&matched(item).length)found.set(id,item);
+        if(id&&matched(item).length){
+          item._wrotaMatchedFilters = [...new Set([...(item._wrotaMatchedFilters || []), ...matched(item)])];
+          found.set(id,item);
+        }
       }
 
-      progress(`Newest listings · page ${page}/${newestPages} · found ${found.size} unique match(es)`);
+      progress(`Newest safety check · page ${page}/${newestPages} · found ${found.size} unique match(es)`);
 
       if(!items.length) break;
-
-      await sleep(350);
+      await sleep(requestDelay);
     }catch(e){
-      errors.push({term:"newest",page,error:e.message});
-      progress(`Error on newest listings · page ${page}`);
-      await sleep(350);
+      errors.push({filter:"newest safety check",page,error:e.message});
+      progress(`Error on newest safety check · page ${page}`);
+
+      if((e.isRateLimit || String(e.message).includes("429")) && stopOn429){
+        renderResults([], errors);
+        badge("Rate limited", "warn");
+        $("results").innerHTML += "<p class='empty'>LZT rate-limited this key/IP. Lower pages, raise Delay ms, then try again later.</p>";
+        return;
+      }
+
+      await sleep(requestDelay);
     }
   }
 
@@ -192,13 +291,25 @@ async function scan(){
   for(const [id,item] of found.entries()){
     detailed++;
     badge(`Loading details ${detailed}/${found.size}`,"warn");
-    $("results").innerHTML=`<p class='empty'>Fetching full details for ${detailed}/${found.size} matched listing(s).</p>`;
+    $("results").innerHTML=`<p class='empty'>Fetching full details for ${detailed}/${found.size} matched listing(s). Already loaded ${results.length}.</p>` + (results.length ? results.map(c=>card(c,"result")).join("") : "");
 
-    const d=await detail(id,item);
-    const m=[...new Set([...matched(item),...matched(d)])].sort();
-    results.push({createdAt:new Date().toISOString(),...fields(item,d),matched_terms:m,raw:{summary:item,detail:d}});
+    let d;
+    try{
+      d=await detail(id,item);
+    }catch(e){
+      d={error:"Detail fetch failed or timed out",exception:e.message,summary_only:item};
+    }
 
-    await sleep(250);
+    const textMatches=[...matched(item), ...matched(d)];
+    const filterMatches=[...(item._wrotaMatchedFilters || [])];
+    const m=[...new Set([...filterMatches, ...textMatches])].sort();
+
+    results.push({createdAt:new Date().toISOString(),...fields(item,d),matched_terms:m,raw:{summary:item,detail:d,matched_filters:filterMatches}});
+
+    // Render after every item so it never appears stuck on the last detail.
+    $("results").innerHTML=results.map(c=>card(c,"result")).join("");
+
+    await sleep(Math.min(requestDelay, 1500));
   }
 
   const old=cases(), seen=new Set(old.map(c=>c.item_id));
@@ -245,7 +356,7 @@ function card(c,type="result"){
 function renderResults(results,errors=[]){
   let html=errors.length?`<pre>Errors:\\n${esc(JSON.stringify(errors,null,2))}</pre>`:"";
   if(!results.length){badge("0 results","warn");html+="<p class='empty'>No matches found.</p>";}
-  else{badge(`${results.length} result(s)`,"ok");html+=results.map(c=>card(c,"result")).join("");}
+  else{badge(`Done · ${results.length} result(s)`,"ok");html+=results.map(c=>card(c,"result")).join("");}
   $("results").innerHTML=html;
 }
 

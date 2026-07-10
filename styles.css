@@ -150,3 +150,20 @@ footer{
   .meta{grid-template-columns:1fr}
   .add{flex-direction:column}
 }
+
+.checkbox-row{
+  display:flex!important;
+  align-items:center;
+  justify-content:space-between;
+  gap:.75rem;
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:.65rem .75rem;
+  margin-top:.7rem;
+  color:var(--muted);
+}
+.checkbox-row input{width:auto;transform:scale(1.2)}
+
+.term small{color:var(--muted);font-size:.72rem}
+
+.mini-note{color:var(--muted);font-size:.86rem;margin:.55rem 0 0}

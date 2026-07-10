@@ -70,11 +70,8 @@
 
         <label>LZT API key</label>
         <input id="apiToken" type="password" autocomplete="off" placeholder="Paste API key each visit">
-
-        <label>Optional Cloudflare Worker proxy URL</label>
-        <input id="proxyUrl" value="https://shiny-shape-49fd.flruming.workers.dev" placeholder="https://your-worker.yourname.workers.dev">
-
-        <div class="actions">
+        <p class="mini-note">Proxy is built in automatically. You only need your LZT API key.</p>
+<div class="actions">
           <button id="testBtn">Test key</button>
           <button id="scanBtn" class="secondary">Scan now</button>
           <button id="clearTokenBtn" class="ghost">Clear key</button>
@@ -85,14 +82,14 @@
 
       <div id="watchlist" class="card glass">
         <div class="card-title">
-          <h2>Rare watchlist</h2>
+          <h2>OG style filters</h2>
           <button id="resetTermsBtn" class="ghost small">Reset</button>
         </div>
 
         <div id="watchlistBox" class="chips"></div>
 
         <div class="add">
-          <input id="newTerm" placeholder="Add term, e.g. og black knight">
+          <input id="newTerm" placeholder="Add OG fallback term">
           <button id="addTermBtn" class="secondary">Add</button>
         </div>
       </div>
@@ -109,9 +106,11 @@
         <label>Category path<input id="categoryPath" value="/fortnite"></label>
         <label>Sort<input id="orderBy" value="pdate_to_down_upload"></label>
         <label>Currency<input id="currency" value="usd"></label>
-        <label>Max terms<input id="maxTerms" type="number" value="25" min="1" max="50"></label>
-        <label>Pages per term<input id="pagesPerTerm" type="number" value="5" min="1" max="25"></label>
-        <label>Newest pages<input id="newestPages" type="number" value="3" min="1" max="25"></label>
+        <label>Max terms<input id="maxTerms" type="number" value="15" min="1" max="50"></label>
+        <label>Pages per term<input id="pagesPerTerm" type="number" value="2" min="1" max="25"></label>
+        <label>Newest safety pages<input id="newestPages" type="number" value="0" min="0" max="25"></label>
+        <label>Delay ms<input id="requestDelay" type="number" value="2500" min="500" max="15000"></label>
+        <label class="checkbox-row"><span>Stop on 429</span><input id="stopOn429" type="checkbox" checked></label>
       </div>
     </section>
 
