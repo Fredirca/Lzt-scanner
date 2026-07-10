@@ -136,6 +136,68 @@ function uniqueImages(payload){
   }).slice(0,18);
 }
 
+function lztLockerImageEndpoints(id){
+  if(!/^\d+$/.test(String(id)))return [];
+  return [
+    `https://lzt.market/${id}/image?type=skins`,
+    `https://lzt.market/${id}/image?type=pickaxes`
+  ];
+}
+
+function imageTypeLabel(url){
+  const l=String(url||"").toLowerCase();
+  if(l.includes("type=skins"))return "Skins";
+  if(l.includes("type=pickaxes"))return "Pickaxes";
+  return "Image";
+}
+
+function mergeImages(...lists){
+  const out=[];
+  for(const list of lists){
+    if(!Array.isArray(list))continue;
+    for(const url of list){
+      if(!url)continue;
+      const key=String(url).split("#")[0];
+      if(out.some(x=>String(x).split("#")[0]===key))continue;
+      out.push(url);
+    }
+  }
+  return out.slice(0,24);
+}
+
+function parseListingPageFields(html){
+  const text=decodeHtml(String(html||""));
+  const fields={};
+
+  const price=text.match(/id=["']price["'][^>]*data-value=["']([^"']+)["']/i);
+  if(price)fields.price=price[1];
+
+  const title=text.match(/<span[^>]*class=["'][^"']*title-account[^"']*["'][^>]*>([\s\S]*?)<\/span>/i);
+  if(title)fields.title=decodeHtml(title[1].replace(/<[^>]*>/g,"").trim());
+
+  const published=text.match(/class=["'][^"']*published_date[^"']*["'][^>]*data-value=["']([^"']+)["']/i);
+  if(published)fields.uploaded_at=Number(published[1]);
+
+  const refreshed=text.match(/class=["'][^"']*refreshed_date[^"']*["'][^>]*data-value=["']([^"']+)["']/i);
+  if(refreshed)fields.updated_at=Number(refreshed[1]);
+
+  const sellerData=text.match(/data-user=["'][^,"']+,\s*([^"']+)["']/i);
+  if(sellerData)fields.seller=decodeHtml(sellerData[1].trim());
+
+  return fields;
+}
+
+function applyPageFields(record,fields){
+  if(!fields)return record;
+  if(fields.title)record.title=fields.title;
+  if(fields.price)record.price=fields.price;
+  if(fields.seller)record.seller=fields.seller;
+  if(fields.uploaded_at)record.uploaded_at=fields.uploaded_at;
+  if(fields.updated_at)record.updated_at=fields.updated_at;
+  return record;
+}
+
+
 function canonicalParam(k){
   const key=decodeURIComponent(String(k||"")).toLowerCase();
   if(key.startsWith("skin"))return "skin[]";
@@ -296,6 +358,9 @@ function compact(item){
   const filters=item.matched_filters||[];
   return {
     scan_rank:item.scan_rank??0,
+    result_key:item.result_key||id,
+    target_key:item.target_key||"",
+    target_label:item.target_label||"",
     item_id:id,
     title:item.title||item.item_title||item.name||(id?`Listing ${id}`:"Listing"),
     skin_count:item.skin_count??item.skins_count??item.skins??item.outfits_count??"Unknown",
@@ -308,6 +373,7 @@ function compact(item){
     country:item.country||item.country_code||item.origin||"Unknown",
     last_activity:item.last_activity||item.last_activity_at||item.last_seen||item.last_login||"Unknown",
     uploaded_at:item.uploaded_at||item.upload_date||item.pdate_upload||item.pdate||"Unknown",
+    updated_at:item.updated_at||item.refreshed_at||item.refreshed_date||"Unknown",
     vbucks:item.vbucks??item.v_bucks??"",
     platform:item.platform||"",
     image_urls:Array.isArray(item.image_urls)?item.image_urls.slice(0,18):[],
@@ -328,9 +394,12 @@ function buildRecord(summary,detail,labels,rank=0){
   if(!known(email)){const s=title.toLowerCase();email=s.includes("same email")?"Same email":s.includes("changeable email")?"yes":"Unknown";}
   let level=summary.season_level??summary.level??merged.season_level??merged.level??firstDeep({summary,detail},["season_level","account_level","fortnite_level","level"]);
   if(!known(level))level=numFromTitle(title,[/level\s*[:#-]?\s*(\d+)/i,/lvl\s*[:#-]?\s*(\d+)/i]);
-  const imgs=uniqueImages({summary,detail});
+  const imgs=mergeImages(lztLockerImageEndpoints(id), uniqueImages({summary,detail}));
   return compact({
     scan_rank:rank,
+    result_key:"",
+    target_key:"",
+    target_label:labels[0]||"",
     item_id:id,
     title,
     skin_count:known(skin)?skin:"Unknown",
@@ -353,11 +422,15 @@ function buildRecord(summary,detail,labels,rank=0){
 async function detail(id){
   try{return await lztGet(`/${id}`);}catch(e1){try{return await lztGet(`/fortnite/${id}`);}catch(e2){return {detail_error:e1.message};}}
 }
-async function enrichImagesFromPage(record){
-  if(!$("lockerImages")?.checked||!record.item_id)return record;
+async function enrichFromListingPage(record){
+  if(!record.item_id)return record;
   const html=await fetchPageHtml(record.item_id);
-  const imgs=uniqueImages({html});
-  record.image_urls=[...new Set([...imgs,...(record.image_urls||[])])].slice(0,18);
+  const fields=parseListingPageFields(html);
+  applyPageFields(record,fields);
+
+  const pageImages=uniqueImages({html});
+  const officialImages=$("lockerImages")?.checked ? lztLockerImageEndpoints(record.item_id) : [];
+  record.image_urls=mergeImages(officialImages,pageImages,record.image_urls||[]);
   return record;
 }
 
@@ -440,7 +513,20 @@ function passes(r,f=getFilters()){
 function visible(){
   const f=getFilters();const arr=results.filter(r=>passes(r,f)).slice();
   const num=(r,k)=>nField(r,k)??-Infinity;
-  if(f.sort==="market")arr.sort((a,b)=>(a.scan_rank??0)-(b.scan_rank??0));
+  if(f.sort==="market"){
+    const order=$("marketOrder")?.value||"pdate_to_down_upload";
+    if(order==="pdate_to_down_upload"||order==="pdate_to_down"){
+      arr.sort((a,b)=>(dateVal(b.uploaded_at)?.getTime()??-Infinity)-(dateVal(a.uploaded_at)?.getTime()??-Infinity)||((a.scan_rank??0)-(b.scan_rank??0)));
+    }else if(order==="pdate_to_up_upload"||order==="pdate_to_up"){
+      arr.sort((a,b)=>(dateVal(a.uploaded_at)?.getTime()??Infinity)-(dateVal(b.uploaded_at)?.getTime()??Infinity)||((a.scan_rank??0)-(b.scan_rank??0)));
+    }else if(order==="price_to_up"){
+      arr.sort((a,b)=>(nField(a,"price")??Infinity)-(nField(b,"price")??Infinity));
+    }else if(order==="price_to_down"){
+      arr.sort((a,b)=>(nField(b,"price")??-Infinity)-(nField(a,"price")??-Infinity));
+    }else{
+      arr.sort((a,b)=>(a.scan_rank??0)-(b.scan_rank??0));
+    }
+  }
   if(f.sort==="price_asc")arr.sort((a,b)=>(nField(a,"price")??Infinity)-(nField(b,"price")??Infinity));
   if(f.sort==="price_desc")arr.sort((a,b)=>num(b,"price")-num(a,"price"));
   if(f.sort==="skins_desc")arr.sort((a,b)=>num(b,"skin_count")-num(a,"skin_count"));
@@ -461,7 +547,7 @@ function card(r){
   const imgs=r.image_urls||[];
   return `<article class="card">
     <div class="card-top">
-      <div><span class="pill">New listing</span><h3>${esc(r.title)}</h3><p class="exclusive">${esc(r.exclusives)}</p></div>
+      <div><span class="pill">${esc(r.target_label||"Matched target")}</span><h3>${esc(r.title)}</h3><p class="exclusive">${esc(r.exclusives)}</p></div>
       <div class="price">${esc(priceText(r.price))}</div>
     </div>
     <div class="info">
@@ -474,12 +560,12 @@ function card(r){
     <pre class="message">${esc(msg)}</pre>
     <details class="gallery-wrap" open>
       <summary>Locker images</summary>
-      ${imgs.length?`<div class="gallery">${imgs.map((u,i)=>`<a class="thumb" href="${esc(u)}" target="_blank" rel="noopener"><img data-img="${esc(u)}" alt="Locker image ${i+1}"><span class="loader">Loading…</span></a>`).join("")}</div><div class="image-actions"><button class="ghost small" data-copy-text="${esc(imgs.join("\\n"))}" type="button">Copy image links</button><span>${imgs.length} image${imgs.length===1?"":"s"}</span></div>`:`<div class="no-images">No locker images found yet.</div>`}
+      ${imgs.length?`<div class="gallery">${imgs.map((u,i)=>`<a class="thumb" href="${esc(u)}" target="_blank" rel="noopener"><img data-img="${esc(u)}" alt="Locker image ${i+1}"><span class="loader">Loading…</span><b>${esc(imageTypeLabel(u))}</b></a>`).join("")}</div><div class="image-actions"><button class="ghost small" data-copy-text="${esc(imgs.join("\\n"))}" type="button">Copy image links</button><span>${imgs.length} image${imgs.length===1?"":"s"}</span></div>`:`<div class="no-images">No locker images found yet.</div>`}
     </details>
     <div class="card-actions">
       <a class="ghost small" href="https://lzt.market/${esc(r.item_id)}/" target="_blank" rel="noopener">Open source</a>
       <button class="ghost small" data-copy-text="${esc(msg)}" type="button">Copy message</button>
-      <button class="ghost small" data-save="${esc(r.item_id)}" type="button">Save</button>
+      <button class="ghost small" data-save="${esc(r.result_key||r.item_id)}" type="button">Save</button>
     </div>
     <details class="raw"><summary>Case data</summary><pre>${esc(JSON.stringify(r,null,2))}</pre></details>
   </article>`;
@@ -498,8 +584,22 @@ function renderResults(){
     box.innerHTML=results.length?`<div class="empty-icon">⌕</div><h3>No matches with current filters</h3><p>Open Filter Lab and relax your filters.</p>`:`<div class="empty-icon">⌕</div><h3>No results yet</h3><p>Hit Scan now when your targets are ready.</p>`;
     return;
   }
-  box.className=viewMode==="compact"?"cards compact":"cards";
-  box.innerHTML=list.map(card).join("");
+  box.className=viewMode==="compact"?"cards compact grouped-results":"cards grouped-results";
+  const groups=new Map();
+  for(const item of list){
+    const label=item.target_label||item.exclusives||"Matched target";
+    if(!groups.has(label))groups.set(label,[]);
+    groups.get(label).push(item);
+  }
+  box.innerHTML=[...groups.entries()].map(([label,items])=>`
+    <section class="result-group">
+      <div class="group-head">
+        <h3>${esc(label)}</h3>
+        <span>${items.length} hit${items.length===1?"":"s"}</span>
+      </div>
+      <div class="group-cards">${items.map(card).join("")}</div>
+    </section>
+  `).join("");
   wireButtons(box);
   hydrateImages(box);
 }
@@ -513,7 +613,7 @@ function renderSaved(){
 }
 function wireButtons(root=document){
   root.querySelectorAll("[data-copy-text]").forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.copyText||"");toast("Copied");}catch{toast("Copy failed");}});
-  root.querySelectorAll("[data-save]").forEach(b=>b.onclick=()=>{const r=results.find(x=>x.item_id===b.dataset.save);if(!r)return;if(!saved.some(x=>x.item_id===r.item_id))saved.unshift(r);saved=saved.slice(0,100);safeSet("wrota.rebuilt.saved",saved);renderSaved();renderResults();toast("Saved");});
+  root.querySelectorAll("[data-save]").forEach(b=>b.onclick=()=>{const r=results.find(x=>(x.result_key||x.item_id)===b.dataset.save);if(!r)return;if(!saved.some(x=>(x.result_key||x.item_id)===(r.result_key||r.item_id)))saved.unshift(r);saved=saved.slice(0,100);safeSet("wrota.rebuilt.saved",saved);renderSaved();renderResults();toast("Saved");});
 }
 function summaryText(){
   const f=getFilters();const p=[];
@@ -552,12 +652,23 @@ async function scan(){
       const label=res.target.label;
       res.items.forEach(item=>{
         const id=listingId(item);if(!id)return;
-        const pack=found.get(id)||{summary:{},labels:[],rank:found.size};
+        const targetKey=`${res.target.param}:${res.target.id}`;
+        const resultKey=`${targetKey}:${id}`;
+        const pack=found.get(resultKey)||{summary:{},labels:[label],rank:found.size,targetKey,resultKey,targetLabel:label};
         pack.summary={...pack.summary,...item};
-        pack.labels=[...new Set([...pack.labels,label])];
-        found.set(id,pack);
+        pack.labels=[label];
+        pack.targetKey=targetKey;
+        pack.resultKey=resultKey;
+        pack.targetLabel=label;
+        found.set(resultKey,pack);
       });
-      results=[...found.values()].map(p=>buildRecord(p.summary,{},p.labels,p.rank));
+      results=[...found.values()].map(p=>{
+        const r=buildRecord(p.summary,{},p.labels,p.rank);
+        r.result_key=p.resultKey;
+        r.target_key=p.targetKey;
+        r.target_label=p.targetLabel;
+        return r;
+      });
       renderResults();
       progress(done,total,`Page scan ${done}/${total}`);
     });
@@ -568,11 +679,14 @@ async function scan(){
       await pool(entries.map(([id,p])=>async()=>{
         const d=await detail(id);
         let rec=buildRecord(p.summary,d,p.labels,p.rank);
-        if($("lockerImages").checked)rec=await enrichImagesFromPage(rec);
+        rec.result_key=p.resultKey;
+        rec.target_key=p.targetKey;
+        rec.target_label=p.targetLabel;
+        rec=await enrichFromListingPage(rec);
         return rec;
       }),Math.min(parallel,6),(done,total,idx,res)=>{
         if(res&&!res.error){
-          const pos=results.findIndex(x=>x.item_id===res.item_id);
+          const pos=results.findIndex(x=>(x.result_key||x.item_id)===(res.result_key||res.item_id));
           if(pos>=0)results[pos]=res;else results.push(res);
           renderResults();
         }

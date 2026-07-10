@@ -51,3 +51,17 @@ Fixes:
 - Results are no longer hidden by empty `Price to`, `Skins to`, or `Level to` fields.
 - Listing extraction is more tolerant of LZT response shapes.
 - Numeric object keys from API responses are copied into `item_id` when needed.
+
+
+## Target groups and official locker images
+
+Fixes in this build:
+
+- Results are no longer merged by listing ID across different cosmetic targets.
+- The same listing can appear separately under Raider’s Revenge, OG Skull, OG Ghoul, etc.
+- The label shown on a card is the exact target that produced that hit.
+- Results are grouped by matched target, so Raider’s Revenge does not overwrite skin matches.
+- Official LZT locker image endpoints are used:
+  - `https://lzt.market/<id>/image?type=skins`
+  - `https://lzt.market/<id>/image?type=pickaxes`
+- Listing page HTML is also parsed for price, title, seller, published date, and extra images when available.
