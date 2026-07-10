@@ -9,7 +9,7 @@ const OG_FILTERS=[
   {label:"Purple Skull Trooper",group:"OG Style",param:"skin[]",id:"030_athena_commando_m_halloween_og",aliases:["og skull trooper","purple skull"]},
   {label:"Pink Ghoul Trooper",group:"OG Style",param:"skin[]",id:"029_athena_commando_f_halloween_og",aliases:["og ghoul trooper","pink ghoul"]},
   {label:"OG Aerial Assault Trooper",group:"Skin",param:"skin[]",id:"017_athena_commando_m",aliases:["og aerial assault trooper","aerial assault trooper"]},
-  {label:"Raider's Revenge",group:"Pickaxe",param:"pickaxe[]",id:"pickaxe_id_027_scavenger",aliases:["og raiders revenge","raider's revenge","raiders revenge"]}
+  {label:"Raider’s Revenge OG Style",group:"OG Style",param:"pickaxe[]",id:"pickaxe_id_027_scavenger",aliases:["raider’s revenge og","raider\'s revenge og","raiders revenge og","black and gold raider\'s revenge","black & gold raider\'s revenge"]}
 ];
 
 const $=id=>document.getElementById(id);
@@ -37,6 +37,23 @@ function getJson(key, fallback){
   try{return JSON.parse(localStorage.getItem(key)||"null") ?? fallback;}
   catch{return fallback;}
 }
+
+function compactCase(item){
+  if(!item || typeof item !== "object") return item;
+  const filters = item.matched_filters || item.matched_terms || item._matchedFilters || [];
+  return {
+    createdAt: item.createdAt || item.created_at || "",
+    item_id: item.item_id || item.itemId || item.id || "",
+    title: item.title || item.name || item.item_title || "",
+    price: item.price ?? item.price_usd ?? "",
+    currency: item.currency || item.price_currency || "USD",
+    seller: item.seller || "",
+    url: item.url || item.link || item.market_url || (item.item_id ? `https://lzt.market/${item.item_id}/` : ""),
+    matched_filters: Array.isArray(filters) ? filters : [String(filters)],
+    note: item.note || "Browser-safe compact record"
+  };
+}
+
 function setJson(key,value){
   if(key===RESULTS_KEY){
     MEMORY_RESULTS = Array.isArray(value) ? value.map(compactCase) : [];
@@ -61,11 +78,11 @@ function setJson(key,value){
     }
   }
 }
-function cases(){return getJson(CASES_KEY,[]).map(compactCase).slice(0,100);}
+function cases(){const list=getJson(CASES_KEY,[]); return Array.isArray(list) ? list.map(compactCase).slice(0,100) : [];}
 function saveCases(list){setJson(CASES_KEY,(Array.isArray(list)?list:[]).map(compactCase).slice(0,100)); updateStats();}
 function currentResults(){return MEMORY_RESULTS;}
 function saveCurrentResults(list){
-  MEMORY_RESULTS = Array.isArray(list) ? list.map(compactCase) : [];
+  MEMORY_RESULTS = Array.isArray(list) ? list.map(compactCase).slice(0,300) : [];
   updateStats();
 }
 
@@ -266,7 +283,7 @@ function card(caseItem){
         <button class="ghost small" type="button" data-copy="${esc(caseItem.item_id)}">Copy ID</button>
       </div>
       <details class="raw">
-        <summary>Evidence data</summary>
+        <summary>Case data</summary>
         <pre>${esc(JSON.stringify(caseItem,null,2))}</pre>
       </details>
     </article>
@@ -377,7 +394,7 @@ async function scan(){
         createdAt:new Date().toISOString(),
         ...f,
         matched_filters:item._matchedFilters||fallbackMatches(item,{}),
-        raw:{summary:item}
+        note:"Matched by LZT cosmetic filter"
       };
     });
 
@@ -395,7 +412,7 @@ async function scan(){
         createdAt:new Date().toISOString(),
         ...f,
         matched_filters:item._matchedFilters||fallbackMatches(item,d),
-        raw:{summary:item,detail:d}
+        note:d?.skipped ? "Matched by LZT cosmetic filter" : "Matched by LZT cosmetic filter; detail checked"
       });
       saveCurrentResults(detailed.concat(summaries.slice(detailed.length)).slice(0,300));
       renderResults(currentResults());

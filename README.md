@@ -65,3 +65,17 @@ This specifically prevents:
 ```text
 Failed to execute 'setItem' on 'Storage': Setting the value of 'wrota.polished.results.v1' exceeded the quota.
 ```
+
+
+## Script error fix
+
+This build restores the missing `compactCase()` helper used by the storage hard fix.
+
+It also keeps:
+
+- polished dashboard
+- browser-save API key field
+- OG filters only
+- Raider’s Revenge OG Style label
+- no advanced filters panel
+- scan results kept in memory instead of localStorage
