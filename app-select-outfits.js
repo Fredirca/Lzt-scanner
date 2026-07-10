@@ -428,7 +428,7 @@ function extractItems(data){
 function paramsForCosmetic(filter,page){
   const params={page,order_by:"pdate_to_down_upload",currency:"usd"};
   params[filter.param]=filter.id;
-  return params;
+  return filterParamsForApi(params);
 }
 
 function fieldSet(summary,matchedLabel,detailData={}){
@@ -442,6 +442,252 @@ function progress(done,total,label){
   if($("progressNumber"))$("progressNumber").textContent=`${pct}%`;
   if($("progressBar"))$("progressBar").style.width=`${pct}%`;
 }
+
+let currentViewMode="cards";
+
+function numericValue(value){
+  const n=Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function lower(value){
+  return String(value ?? "").toLowerCase();
+}
+
+function splitTerms(value){
+  return String(value || "")
+    .split(/[,|]+/)
+    .map(x=>x.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function filterState(){
+  return {
+    search: lower($("filterSearch")?.value || "").trim(),
+    priceMin: numericValue($("priceMin")?.value),
+    priceMax: numericValue($("priceMax")?.value),
+    skinMin: numericValue($("skinMin")?.value),
+    skinMax: numericValue($("skinMax")?.value),
+    levelMin: numericValue($("levelMin")?.value),
+    levelMax: numericValue($("levelMax")?.value),
+    seller: lower($("sellerFilter")?.value || "").trim(),
+    country: lower($("countryFilter")?.value || "").trim(),
+    email: $("emailFilter")?.value || "",
+    sort: $("sortFilter")?.value || "newest",
+    includeTerms: splitTerms($("includeTerms")?.value || ""),
+    excludeTerms: splitTerms($("excludeTerms")?.value || ""),
+    hideUnknownPrice: Boolean($("hideUnknownPrice")?.checked),
+    hideUnknownSeller: Boolean($("hideUnknownSeller")?.checked),
+    hideUnknownCountry: Boolean($("hideUnknownCountry")?.checked),
+    onlyFullInfo: Boolean($("onlyFullInfo")?.checked)
+  };
+}
+
+function listingText(item){
+  return [
+    item.title,
+    item.seller,
+    item.country,
+    item.exclusives,
+    item.email_changeable,
+    item.season_level,
+    item.skin_count,
+    item.price,
+    item.vbucks,
+    item.platform
+  ].map(x=>String(x ?? "")).join(" ").toLowerCase();
+}
+
+function fieldNumber(item,key){
+  const value = item?.[key];
+  if(value === undefined || value === null || value === "" || value === "Unknown") return null;
+  const match = String(value).match(/-?\d+(\.\d+)?/);
+  return match ? Number(match[0]) : null;
+}
+
+function isUnknown(value){
+  return value === undefined || value === null || value === "" || String(value).toLowerCase() === "unknown";
+}
+
+function emailMatches(value,mode){
+  if(!mode) return true;
+  const text=lower(value);
+  const icon=iconBool(value);
+  if(mode==="yes") return icon==="✅";
+  if(mode==="no") return icon==="❌";
+  if(mode==="known") return icon==="✅" || icon==="❌" || text.includes("same");
+  if(mode==="same") return text.includes("same");
+  return true;
+}
+
+function passesFilters(item,state=filterState()){
+  const text=listingText(item);
+
+  if(state.search && !text.includes(state.search)) return false;
+  if(state.seller && !lower(item.seller).includes(state.seller)) return false;
+  if(state.country && !lower(item.country).includes(state.country)) return false;
+
+  const price=fieldNumber(item,"price");
+  if(state.priceMin !== null && (price === null || price < state.priceMin)) return false;
+  if(state.priceMax !== null && (price === null || price > state.priceMax)) return false;
+  if(state.hideUnknownPrice && price === null) return false;
+
+  const skins=fieldNumber(item,"skin_count");
+  if(state.skinMin !== null && (skins === null || skins < state.skinMin)) return false;
+  if(state.skinMax !== null && (skins === null || skins > state.skinMax)) return false;
+
+  const level=fieldNumber(item,"season_level");
+  if(state.levelMin !== null && (level === null || level < state.levelMin)) return false;
+  if(state.levelMax !== null && (level === null || level > state.levelMax)) return false;
+
+  if(!emailMatches(item.email_changeable,state.email)) return false;
+
+  if(state.includeTerms.length && !state.includeTerms.every(term=>text.includes(term))) return false;
+  if(state.excludeTerms.length && state.excludeTerms.some(term=>text.includes(term))) return false;
+
+  if(state.hideUnknownSeller && isUnknown(item.seller)) return false;
+  if(state.hideUnknownCountry && isUnknown(item.country)) return false;
+
+  if(state.onlyFullInfo){
+    if(isUnknown(item.skin_count) || isUnknown(item.seller) || isUnknown(item.price) || isUnknown(item.country) || isUnknown(item.last_activity)) return false;
+  }
+
+  return true;
+}
+
+function sortResults(list,state=filterState()){
+  const copy=list.slice();
+  const num=(item,key)=>fieldNumber(item,key) ?? -Infinity;
+
+  if(state.sort==="price_asc") copy.sort((a,b)=>(fieldNumber(a,"price") ?? Infinity)-(fieldNumber(b,"price") ?? Infinity));
+  if(state.sort==="price_desc") copy.sort((a,b)=>num(b,"price")-num(a,"price"));
+  if(state.sort==="skins_desc") copy.sort((a,b)=>num(b,"skin_count")-num(a,"skin_count"));
+  if(state.sort==="level_desc") copy.sort((a,b)=>num(b,"season_level")-num(a,"season_level"));
+
+  return copy;
+}
+
+function visibleResults(){
+  const state=filterState();
+  return sortResults(currentResults().filter(item=>passesFilters(item,state)),state);
+}
+
+function filterSummaryText(){
+  const s=filterState();
+  const parts=[];
+  if(s.search)parts.push(`search: ${s.search}`);
+  if(s.priceMin!==null||s.priceMax!==null)parts.push(`price ${s.priceMin ?? 0}–${s.priceMax ?? "∞"}`);
+  if(s.skinMin!==null||s.skinMax!==null)parts.push(`skins ${s.skinMin ?? 0}–${s.skinMax ?? "∞"}`);
+  if(s.levelMin!==null||s.levelMax!==null)parts.push(`level ${s.levelMin ?? 0}–${s.levelMax ?? "∞"}`);
+  if(s.seller)parts.push(`seller: ${s.seller}`);
+  if(s.country)parts.push(`country: ${s.country}`);
+  if(s.email)parts.push(`email: ${s.email}`);
+  if(s.includeTerms.length)parts.push(`include: ${s.includeTerms.join(", ")}`);
+  if(s.excludeTerms.length)parts.push(`exclude: ${s.excludeTerms.join(", ")}`);
+  if(s.onlyFullInfo)parts.push("full info only");
+  return parts.length ? parts.join(" · ") : "No extra filters active";
+}
+
+function updateFilterSummary(){
+  const el=$("filterSummary");
+  if(el) el.textContent=filterSummaryText();
+
+  const note=$("resultNote");
+  if(note){
+    const total=currentResults().length;
+    const shown=visibleResults().length;
+    note.textContent=total ? `${shown}/${total} shown after filters` : "Turbo results update live.";
+  }
+}
+
+function refreshFilteredResults(){
+  updateFilterSummary();
+  renderResults();
+}
+
+function resetListingFilters(){
+  ["filterSearch","priceMin","priceMax","skinMin","skinMax","levelMin","levelMax","sellerFilter","countryFilter","includeTerms","excludeTerms"].forEach(id=>{
+    if($(id)) $(id).value="";
+  });
+  if($("emailFilter")) $("emailFilter").value="";
+  if($("sortFilter")) $("sortFilter").value="newest";
+  ["hideUnknownPrice","hideUnknownSeller","hideUnknownCountry","onlyFullInfo"].forEach(id=>{
+    if($(id)) $(id).checked=false;
+  });
+  refreshFilteredResults();
+  toast("Filters reset");
+}
+
+function applyPreset(kind){
+  resetListingFilters();
+
+  if(kind==="fresh"){
+    if($("sortFilter")) $("sortFilter").value="newest";
+    if($("hideUnknownPrice")) $("hideUnknownPrice").checked=true;
+  }
+
+  if(kind==="budget"){
+    if($("priceMax")) $("priceMax").value="250";
+    if($("sortFilter")) $("sortFilter").value="price_asc";
+    if($("hideUnknownPrice")) $("hideUnknownPrice").checked=true;
+  }
+
+  if(kind==="premium"){
+    if($("priceMin")) $("priceMin").value="250";
+    if($("sortFilter")) $("sortFilter").value="price_desc";
+  }
+
+  refreshFilteredResults();
+  toast(`${kind[0].toUpperCase()+kind.slice(1)} preset applied`);
+}
+
+function filterParamsForApi(params){
+  const state=filterState();
+
+  // These are common marketplace-style params. If LZT ignores one, local filters still apply.
+  if(state.priceMin!==null) params.pmin=state.priceMin;
+  if(state.priceMax!==null) params.pmax=state.priceMax;
+  if(state.search) params.title=state.search;
+
+  return params;
+}
+
+function bindFilterUi(){
+  const ids=[
+    "filterSearch","priceMin","priceMax","skinMin","skinMax","levelMin","levelMax",
+    "sellerFilter","countryFilter","emailFilter","sortFilter","includeTerms","excludeTerms",
+    "hideUnknownPrice","hideUnknownSeller","hideUnknownCountry","onlyFullInfo"
+  ];
+
+  ids.forEach(id=>{
+    const el=$(id);
+    if(!el)return;
+    el.addEventListener("input",refreshFilteredResults);
+    el.addEventListener("change",refreshFilteredResults);
+  });
+
+  if($("clearSearchBtn")) $("clearSearchBtn").onclick=()=>{if($("filterSearch")) $("filterSearch").value="";refreshFilteredResults();};
+  if($("resetFiltersBtn")) $("resetFiltersBtn").onclick=resetListingFilters;
+  if($("applyPresetFresh")) $("applyPresetFresh").onclick=()=>applyPreset("fresh");
+  if($("applyPresetBudget")) $("applyPresetBudget").onclick=()=>applyPreset("budget");
+  if($("applyPresetPremium")) $("applyPresetPremium").onclick=()=>applyPreset("premium");
+
+  if($("viewCardsBtn")) $("viewCardsBtn").onclick=()=>{
+    currentViewMode="cards";
+    $("viewCardsBtn").classList.add("active");
+    $("viewCompactBtn")?.classList.remove("active");
+    renderResults();
+  };
+  if($("viewCompactBtn")) $("viewCompactBtn").onclick=()=>{
+    currentViewMode="compact";
+    $("viewCompactBtn").classList.add("active");
+    $("viewCardsBtn")?.classList.remove("active");
+    renderResults();
+  };
+
+  updateFilterSummary();
+}
+
 function card(caseItem){
   const link=/^\d+$/.test(String(caseItem.item_id))?`https://lzt.market/${caseItem.item_id}/`:"";
   const emailIcon=iconBool(caseItem.email_changeable);
@@ -465,17 +711,18 @@ Email Changeable: ${emailIcon}
 ⏱️ Last Activity: ${cleanDate(caseItem.last_activity)}${extraLines ? "\n"+extraLines : ""}
 🔗 Link: ${link||"Unavailable"}`;
 
-  return `<article class="listing-alert-card premium-card">
+  return `<article class="listing-alert-card premium-card ${currentViewMode==="compact"?"compact-result":""}">
     <div class="listing-top">
       <div>
         <span class="listing-kicker">New Fortnite listing</span>
-        <h4>${esc(caseItem.exclusives || "Selected cosmetic filter")}</h4>
+        <h4>${esc(caseItem.title || "Untitled listing")}</h4>
+        <p class="exclusive-line">${esc(caseItem.exclusives || "Selected cosmetic filter")}</p>
       </div>
       <div class="price-badge">${esc(priceText(caseItem.price))}</div>
     </div>
 
     <div class="info-grid">
-      <div><span>Skin Count</span><strong>${esc(caseItem.skin_count||"Unknown")}</strong></div>
+      <div><span>Skins</span><strong>${esc(caseItem.skin_count||"Unknown")}</strong></div>
       <div><span>Email</span><strong>${esc(emailIcon)}</strong></div>
       <div><span>Level</span><strong>${esc(caseItem.season_level||"Unknown")}</strong></div>
       <div><span>Country</span><strong>${esc(caseItem.country||"Unknown")}</strong></div>
@@ -497,12 +744,27 @@ function wireCopyButtons(){
     btn.onclick=async()=>{try{await navigator.clipboard.writeText(btn.dataset.copyText||btn.dataset.copy||"");toast("Copied");}catch{toast("Copy failed");}};
   });
 }
-function renderResults(items=currentResults()){
+function renderResults(items=null){
   const box=$("resultsBox");
   if(!box)return;
-  if(!items.length){box.className="empty-state";box.innerHTML=`<div class="empty-icon">⌕</div><h4>No results yet</h4><p>Start a scan to populate this workspace.</p>`;return;}
-  box.className="cards";box.innerHTML=items.map(card).join("");wireCopyButtons();
+
+  const list = items || visibleResults();
+  updateFilterSummary();
+
+  if(!list.length){
+    box.className="empty-state";
+    const total=currentResults().length;
+    box.innerHTML= total
+      ? `<div class="empty-icon">⌕</div><h4>No results match your filters</h4><p>Relax the Filter Lab settings to show more listings.</p>`
+      : `<div class="empty-icon">⌕</div><h4>No results yet</h4><p>Start a scan to populate this workspace.</p>`;
+    return;
+  }
+
+  box.className=currentViewMode==="compact" ? "cards compact-cards" : "cards";
+  box.innerHTML=list.map(card).join("");
+  wireCopyButtons();
 }
+
 function renderCases(){
   const box=$("casesBox");
   if(!box)return;
@@ -511,9 +773,10 @@ function renderCases(){
   box.className="cards";box.innerHTML=list.map(card).join("");wireCopyButtons();
 }
 function updateStats(){
-  if($("statMatches"))$("statMatches").textContent=String(currentResults().length);
+  if($("statMatches"))$("statMatches").textContent=String(visibleResults().length || currentResults().length);
   if($("statCases"))$("statCases").textContent=String(cases().length);
   if($("statLastScan"))$("statLastScan").textContent=safeLocalGet("wrota.selectoutfits.lastScan","—");
+  if(typeof updateFilterSummary==="function") updateFilterSummary();
 }
 async function testKey(){
   setStatus("Testing","warn");if($("testBtn"))$("testBtn").disabled=true;
@@ -521,71 +784,154 @@ async function testKey(){
   catch(error){setStatus(error.message==="Rate limited"?"Rate limited":"Check failed","bad");toast(error.message==="Rate limited"?"Rate limited. Try again later.":`Key test failed: ${error.message}`);}
   finally{if($("testBtn"))$("testBtn").disabled=false;}
 }
+
+function limitNumber(value,min,max,fallback){
+  const n=Number(value);
+  if(Number.isNaN(n)) return fallback;
+  return Math.max(min,Math.min(max,n));
+}
+
+async function runPool(tasks, limit, onProgress){
+  const results=[];
+  let index=0;
+  let finished=0;
+
+  async function worker(){
+    while(index < tasks.length){
+      const taskIndex=index++;
+      try{
+        results[taskIndex]=await tasks[taskIndex]();
+      }catch(error){
+        results[taskIndex]={error};
+      }
+      finished++;
+      if(onProgress) onProgress(finished,tasks.length,taskIndex,results[taskIndex]);
+    }
+  }
+
+  const workers=Array.from({length:Math.max(1,Math.min(limit,tasks.length))},worker);
+  await Promise.all(workers);
+  return results;
+}
+
+function mergeFound(found,item,label){
+  const id=listingId(item);
+  if(!id)return;
+  const existing=found.get(id) || {summary:{}, labels:[]};
+  existing.summary={...existing.summary,...item};
+  existing.labels=[...new Set([...(existing.labels||[]),label])];
+  found.set(id,existing);
+}
+
+function updateSpeedBadge(text){
+  const el=$("speedBadge");
+  if(el) el.textContent=text;
+}
+
 async function scan(){
   const cosmeticFilters=parseCosmeticInput();
   renderActiveCosmetics();
+
   if(!cosmeticFilters.length){
     toast("Paste filter params or cosmetic IDs first.");
     setSubtitle("No cosmetic filters found.");
     return;
   }
 
-  const pages=Math.max(1,Math.min(25,Number($("pagesPerFilter")?.value||2)));
-  const delay=Math.max(500,Math.min(15000,Number($("requestDelay")?.value||2500)));
+  const pages=limitNumber($("pagesPerFilter")?.value,1,25,3);
+  const delay=limitNumber($("requestDelay")?.value,0,15000,250);
+  const maxConcurrent=limitNumber($("maxConcurrent")?.value,1,10,5);
+  const enrichDetails=Boolean($("enrichDetails")?.checked);
   const stopOn429=Boolean($("stopOn429")?.checked);
+
   const found=new Map();
-  const total=cosmeticFilters.length*pages;
-  let done=0;
+  const pageTasks=[];
+
+  for(const filter of cosmeticFilters){
+    for(let page=1;page<=pages;page++){
+      pageTasks.push(async()=>{
+        if(delay) await sleep(delay);
+        const data=await lztGet("/fortnite",paramsForCosmetic(filter,page));
+        const items=extractItems(data);
+        return {filter,page,items};
+      });
+    }
+  }
 
   saveCurrentResults([]);
   renderResults([]);
-  setStatus("Scanning","warn");
-  setSubtitle("Scanning exact filters, then enriching listing details.");
+  setStatus("Turbo scanning","warn");
+  updateSpeedBadge(`⚡ ${maxConcurrent}x parallel`);
+  setSubtitle("Turbo scan running. Results appear as soon as they are found.");
   if($("scanBtn"))$("scanBtn").disabled=true;
 
   try{
-    for(const filter of cosmeticFilters){
-      for(let page=1;page<=pages;page++){
-        try{
-          const data=await lztGet("/fortnite",paramsForCosmetic(filter,page));
-          const items=extractItems(data);
-
-          for(const item of items){
-            const id=listingId(item);
-            if(!id)continue;
-            const label=filter.label || labelForCosmetic(filter.param,filter.id);
-            const existing=found.get(id) || {summary:item, labels:[]};
-            existing.summary={...existing.summary, ...item};
-            existing.labels=[...new Set([...(existing.labels||[]),label])];
-            found.set(id,existing);
-          }
-
-          done++;
-          progress(done,total,`${filter.label || filter.id} · page ${page}`);
-          if(!items.length)break;
-          await sleep(delay);
-        }catch(error){
-          done++;
-          progress(done,total,`${filter.label || filter.id} · error`);
-          if(error.isRateLimit && stopOn429)throw error;
-          await sleep(delay);
+    await runPool(pageTasks,maxConcurrent,(done,total,taskIndex,result)=>{
+      if(result?.error){
+        if(result.error.isRateLimit && stopOn429){
+          throw result.error;
         }
+      }else if(result?.items){
+        const label=result.filter.label || labelForCosmetic(result.filter.param,result.filter.id);
+        for(const item of result.items){
+          mergeFound(found,item,label);
+        }
+
+        const quick=[...found.values()].map(pack=>{
+          const record=extractListingFields(pack.summary,{},pack.labels);
+          record.note="Fast result; detail enrichment pending";
+          return compactCase(record);
+        });
+
+        saveCurrentResults(quick);
+        renderResults();
       }
-    }
 
-    const enriched=[];
-    const entries=[...found.entries()];
-    let checked=0;
+      progress(done,total,`Turbo page scan ${done}/${total}`);
+      setSubtitle(`${visibleResults().length}/${found.size} listing(s) shown after filters.`);
+    });
 
-    for(const [id,pack] of entries){
-      checked++;
-      progress(checked,entries.length || 1,`Filling listing info ${checked}/${entries.length}`);
-      const detailData=await getListingDetail(id);
-      const record=extractListingFields(pack.summary,detailData,pack.labels);
-      enriched.push(compactCase(record));
-      saveCurrentResults(enriched);
-      renderResults(currentResults());
-      await sleep(Math.min(delay,1200));
+    let quickResults=[...found.values()].map(pack=>{
+      const record=extractListingFields(pack.summary,{},pack.labels);
+      record.note=enrichDetails ? "Fast result; enriching details" : "Fast result";
+      return compactCase(record);
+    });
+
+    saveCurrentResults(quickResults);
+    renderResults();
+
+    if(enrichDetails && found.size){
+      setStatus("Enriching","warn");
+      setSubtitle("Filling missing fields with listing detail data.");
+      const entries=[...found.entries()];
+
+      const detailTasks=entries.map(([id,pack])=>async()=>{
+        if(delay) await sleep(Math.min(delay,700));
+        const detailData=await getListingDetail(id);
+        return {id,pack,detailData};
+      });
+
+      const enrichedById=new Map();
+
+      await runPool(detailTasks,Math.max(1,Math.min(maxConcurrent,6)),(done,total,taskIndex,result)=>{
+        if(result && !result.error){
+          const record=extractListingFields(result.pack.summary,result.detailData,result.pack.labels);
+          enrichedById.set(result.id,compactCase(record));
+
+          const merged=entries.map(([id,pack])=>{
+            if(enrichedById.has(id)) return enrichedById.get(id);
+            const pending=extractListingFields(pack.summary,{},pack.labels);
+            pending.note="Fast result; detail enrichment pending";
+            return compactCase(pending);
+          });
+
+          saveCurrentResults(merged);
+          renderResults();
+        }
+
+        progress(done,total,`Turbo enrichment ${done}/${total}`);
+        setSubtitle(`Enriched ${done}/${total} listing(s).`);
+      });
     }
 
     const old=cases();
@@ -601,15 +947,18 @@ async function scan(){
     const stamp=new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
     safeLocalSet("wrota.selectoutfits.lastScan",stamp);
     updateStats();
-    setSubtitle(enriched.length?"Enriched scan complete.":"No numeric listings found for the selected exact filters.");
-    setStatus(`Done · ${enriched.length} found`,"ok");
+    setSubtitle(currentResults().length ? "Turbo scan complete." : "No numeric listings found for the selected exact filters.");
+    setStatus(`Done · ${currentResults().length} found`,"ok");
+    updateSpeedBadge("⚡ Turbo complete");
   }catch(error){
     if(error.isRateLimit){
       setStatus("Rate limited","bad");
-      setSubtitle("Rate limit reached. Lower depth or raise delay.");
-      toast("Rate limited. Stop scanning for a while.");
+      updateSpeedBadge("⚠️ Rate limited");
+      setSubtitle("Rate limit reached. Lower parallel requests or raise delay.");
+      toast("Rate limited. Try lower parallel requests.");
     }else{
       setStatus("Scan failed","bad");
+      updateSpeedBadge("⚠️ Scan issue");
       setSubtitle(error.message);
       toast(`Scan failed: ${error.message}`);
     }
@@ -636,6 +985,7 @@ function bind(){
   if($("exportResultsBtn"))$("exportResultsBtn").onclick=()=>downloadJson("wrota-results.json",currentResults());
   if($("exportCasesBtn"))$("exportCasesBtn").onclick=()=>downloadJson("wrota-cases.json",cases());
   if($("clearCasesBtn"))$("clearCasesBtn").onclick=()=>{saveCases([]);renderCases();toast("Cases cleared");};
+  bindFilterUi();
   if($("resetCosmeticsBtn"))$("resetCosmeticsBtn").onclick=()=>{$("cosmeticSearchInput").value="";renderActiveCosmetics();toast("Cosmetic filters reset");};
   if($("cosmeticSearchInput"))$("cosmeticSearchInput").addEventListener("input",renderActiveCosmetics);
 }

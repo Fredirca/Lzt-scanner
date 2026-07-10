@@ -62,3 +62,39 @@ It now attempts to populate:
 - numeric LZT listing link
 
 If LZT does not provide a field in search or detail data, the app leaves it as `Unknown` instead of inventing it.
+
+
+## Turbo UI build
+
+This version is optimized for speed:
+
+- parallel page scanning
+- configurable parallel requests
+- low default delay
+- instant result rendering
+- optional background detail enrichment
+- upgraded premium result cards
+- animated progress and speed badge
+
+If you hit a 429, lower `Parallel requests` or raise `Delay`.
+
+
+## Pro Filters UI
+
+This build adds a polished Filter Lab:
+
+- search across title/seller/country/exclusives
+- price min/max
+- skin count min/max
+- level min/max
+- seller filter
+- country filter
+- email status filter
+- include/exclude terms
+- hide unknown fields toggles
+- full-info-only toggle
+- fresh/budget/premium presets
+- card/compact view toggle
+- API price/title params where supported, plus local filtering
+
+Results update live as filters change.
