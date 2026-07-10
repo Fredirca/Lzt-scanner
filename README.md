@@ -65,3 +65,35 @@ Fixes in this build:
   - `https://lzt.market/<id>/image?type=skins`
   - `https://lzt.market/<id>/image?type=pickaxes`
 - Listing page HTML is also parsed for price, title, seller, published date, and extra images when available.
+
+
+## Global mixed feed fix
+
+This build changes the results model again:
+
+- One card per unique numeric LZT account/listing.
+- If the same account matches multiple filters, it shows once with multiple badges.
+- Raider’s Revenge no longer becomes the only label; all matched filters are displayed.
+- Newest uploaded sorts the entire mixed account feed globally, not separately by target group.
+- Official LZT image endpoints remain first:
+  - `/image?type=skins`
+  - `/image?type=pickaxes`
+
+
+## Embedded locker images build
+
+This build stops trying to fetch locker images through JavaScript thumbnails.
+
+Instead, every result card embeds the real LZT image endpoints directly:
+
+```text
+https://lzt.market/<listing id>/image?type=skins
+https://lzt.market/<listing id>/image?type=pickaxes
+```
+
+Each result now shows two embedded panels:
+
+- Skins locker
+- Pickaxes locker
+
+Each panel also has an Open link and the card has a Copy embed links button.

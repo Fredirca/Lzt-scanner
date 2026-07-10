@@ -360,7 +360,9 @@ function compact(item){
     scan_rank:item.scan_rank??0,
     result_key:item.result_key||id,
     target_key:item.target_key||"",
+    target_keys:item.target_keys||[],
     target_label:item.target_label||"",
+    match_count:item.match_count||((item.matched_filters||[]).length||0),
     item_id:id,
     title:item.title||item.item_title||item.name||(id?`Listing ${id}`:"Listing"),
     skin_count:item.skin_count??item.skins_count??item.skins??item.outfits_count??"Unknown",
@@ -397,9 +399,11 @@ function buildRecord(summary,detail,labels,rank=0){
   const imgs=mergeImages(lztLockerImageEndpoints(id), uniqueImages({summary,detail}));
   return compact({
     scan_rank:rank,
-    result_key:"",
+    result_key:id,
     target_key:"",
-    target_label:labels[0]||"",
+    target_keys:[],
+    target_label:labels.length>1?`${labels.length} matched targets`:(labels[0]||""),
+    match_count:labels.length,
     item_id:id,
     title,
     skin_count:known(skin)?skin:"Unknown",
@@ -515,10 +519,11 @@ function visible(){
   const num=(r,k)=>nField(r,k)??-Infinity;
   if(f.sort==="market"){
     const order=$("marketOrder")?.value||"pdate_to_down_upload";
+    const uploadedMs=x=>dateVal(x.uploaded_at)?.getTime() ?? dateVal(x.updated_at)?.getTime() ?? -Infinity;
     if(order==="pdate_to_down_upload"||order==="pdate_to_down"){
-      arr.sort((a,b)=>(dateVal(b.uploaded_at)?.getTime()??-Infinity)-(dateVal(a.uploaded_at)?.getTime()??-Infinity)||((a.scan_rank??0)-(b.scan_rank??0)));
+      arr.sort((a,b)=>uploadedMs(b)-uploadedMs(a)||((a.scan_rank??0)-(b.scan_rank??0)));
     }else if(order==="pdate_to_up_upload"||order==="pdate_to_up"){
-      arr.sort((a,b)=>(dateVal(a.uploaded_at)?.getTime()??Infinity)-(dateVal(b.uploaded_at)?.getTime()??Infinity)||((a.scan_rank??0)-(b.scan_rank??0)));
+      arr.sort((a,b)=>(uploadedMs(a)===-Infinity?Infinity:uploadedMs(a))-(uploadedMs(b)===-Infinity?Infinity:uploadedMs(b))||((a.scan_rank??0)-(b.scan_rank??0)));
     }else if(order==="price_to_up"){
       arr.sort((a,b)=>(nField(a,"price")??Infinity)-(nField(b,"price")??Infinity));
     }else if(order==="price_to_down"){
@@ -538,16 +543,61 @@ function visible(){
 function alertText(r){
   const extra=[
     r.vbucks?`💎 V-Bucks: ${r.vbucks}`:"",
-    r.uploaded_at&&r.uploaded_at!=="Unknown"?`🆕 Uploaded: ${niceDate(r.uploaded_at)}`:""
+    (r.uploaded_at&&r.uploaded_at!=="Unknown")?`🆕 Uploaded: ${niceDate(r.uploaded_at)}`:(r.updated_at&&r.updated_at!=="Unknown"?`🆕 Uploaded: ${niceDate(r.updated_at)}`:"")
   ].filter(Boolean).join("\n");
   return `New Fortnite listing on LZT Market\n\nSkin Count: ${r.skin_count||"Unknown"}\nExclusives: ${r.exclusives||"Selected cosmetic filter"}\nEmail Changeable: ${boolIcon(r.email_changeable)}\n\n🏷️ Title: ${r.title||"Untitled listing"}\n👤 Seller: ${r.seller||"Unknown"}\n💵 Price: ${priceText(r.price)}\n🔢 Season Level: ${r.season_level||"Unknown"}\n🌍 Country: ${r.country||"Unknown"}\n⏱️ Last Activity: ${niceDate(r.last_activity)}${extra?"\n"+extra:""}\n🔗 Link: https://lzt.market/${r.item_id}/`;
 }
+
+function lztEmbedUrl(id,type){
+  if(!/^\d+$/.test(String(id)))return "";
+  return `https://lzt.market/${id}/image?type=${type}`;
+}
+
+function renderLockerEmbeds(r){
+  if(!$("lockerImages")?.checked || !r.item_id){
+    return `<div class="no-images">Locker image embeds are disabled.</div>`;
+  }
+
+  const skins=lztEmbedUrl(r.item_id,"skins");
+  const pickaxes=lztEmbedUrl(r.item_id,"pickaxes");
+
+  return `<div class="embed-grid">
+    <article class="embed-card">
+      <div class="embed-head">
+        <strong>Skins locker</strong>
+        <a href="${esc(skins)}" target="_blank" rel="noopener">Open</a>
+      </div>
+      <div class="embed-frame-wrap">
+        <iframe src="${esc(skins)}" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-same-origin allow-scripts allow-popups"></iframe>
+      </div>
+    </article>
+
+    <article class="embed-card">
+      <div class="embed-head">
+        <strong>Pickaxes locker</strong>
+        <a href="${esc(pickaxes)}" target="_blank" rel="noopener">Open</a>
+      </div>
+      <div class="embed-frame-wrap">
+        <iframe src="${esc(pickaxes)}" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-same-origin allow-scripts allow-popups"></iframe>
+      </div>
+    </article>
+  </div>
+
+  <div class="image-actions">
+    <button class="ghost small" data-copy-text="${esc([skins,pickaxes].join("\\n"))}" type="button">Copy embed links</button>
+    <span>Embedded from LZT image endpoints</span>
+  </div>`;
+}
+
 function card(r){
   const msg=alertText(r);
-  const imgs=r.image_urls||[];
   return `<article class="card">
     <div class="card-top">
-      <div><span class="pill">${esc(r.target_label||"Matched target")}</span><h3>${esc(r.title)}</h3><p class="exclusive">${esc(r.exclusives)}</p></div>
+      <div>
+        <span class="pill">${esc((r.match_count||0)>1?`${r.match_count} matched targets`:(r.target_label||"Matched target"))}</span>
+        <h3>${esc(r.title)}</h3>
+        <div class="match-badges">${(r.matched_filters||[]).map(label=>`<span>${esc(label)}</span>`).join("")}</div>
+      </div>
       <div class="price">${esc(priceText(r.price))}</div>
     </div>
     <div class="info">
@@ -555,17 +605,17 @@ function card(r){
       <div><span>Email</span><strong>${esc(boolIcon(r.email_changeable))}</strong></div>
       <div><span>Level</span><strong>${esc(r.season_level)}</strong></div>
       <div><span>Country</span><strong>${esc(r.country)}</strong></div>
-      <div><span>Uploaded</span><strong>${esc(niceDate(r.uploaded_at))}</strong></div>
+      <div><span>Uploaded</span><strong>${esc(niceDate(r.uploaded_at!=="Unknown"?r.uploaded_at:r.updated_at))}</strong></div>
     </div>
     <pre class="message">${esc(msg)}</pre>
     <details class="gallery-wrap" open>
       <summary>Locker images</summary>
-      ${imgs.length?`<div class="gallery">${imgs.map((u,i)=>`<a class="thumb" href="${esc(u)}" target="_blank" rel="noopener"><img data-img="${esc(u)}" alt="Locker image ${i+1}"><span class="loader">Loading…</span><b>${esc(imageTypeLabel(u))}</b></a>`).join("")}</div><div class="image-actions"><button class="ghost small" data-copy-text="${esc(imgs.join("\\n"))}" type="button">Copy image links</button><span>${imgs.length} image${imgs.length===1?"":"s"}</span></div>`:`<div class="no-images">No locker images found yet.</div>`}
+      ${renderLockerEmbeds(r)}
     </details>
     <div class="card-actions">
       <a class="ghost small" href="https://lzt.market/${esc(r.item_id)}/" target="_blank" rel="noopener">Open source</a>
       <button class="ghost small" data-copy-text="${esc(msg)}" type="button">Copy message</button>
-      <button class="ghost small" data-save="${esc(r.result_key||r.item_id)}" type="button">Save</button>
+      <button class="ghost small" data-save="${esc(r.item_id)}" type="button">Save</button>
     </div>
     <details class="raw"><summary>Case data</summary><pre>${esc(JSON.stringify(r,null,2))}</pre></details>
   </article>`;
@@ -584,24 +634,9 @@ function renderResults(){
     box.innerHTML=results.length?`<div class="empty-icon">⌕</div><h3>No matches with current filters</h3><p>Open Filter Lab and relax your filters.</p>`:`<div class="empty-icon">⌕</div><h3>No results yet</h3><p>Hit Scan now when your targets are ready.</p>`;
     return;
   }
-  box.className=viewMode==="compact"?"cards compact grouped-results":"cards grouped-results";
-  const groups=new Map();
-  for(const item of list){
-    const label=item.target_label||item.exclusives||"Matched target";
-    if(!groups.has(label))groups.set(label,[]);
-    groups.get(label).push(item);
-  }
-  box.innerHTML=[...groups.entries()].map(([label,items])=>`
-    <section class="result-group">
-      <div class="group-head">
-        <h3>${esc(label)}</h3>
-        <span>${items.length} hit${items.length===1?"":"s"}</span>
-      </div>
-      <div class="group-cards">${items.map(card).join("")}</div>
-    </section>
-  `).join("");
+  box.className=viewMode==="compact"?"cards compact":"cards";
+  box.innerHTML=list.map(card).join("");
   wireButtons(box);
-  hydrateImages(box);
 }
 function renderSaved(){
   const box=$("savedBox");
@@ -609,11 +644,11 @@ function renderSaved(){
   if(!saved.length){box.className="empty small-empty";box.innerHTML=`<div class="empty-icon">□</div><h3>No saved cases</h3>`;return;}
   box.className="cards compact";
   box.innerHTML=saved.map(card).join("");
-  wireButtons(box);hydrateImages(box);
+  wireButtons(box);
 }
 function wireButtons(root=document){
   root.querySelectorAll("[data-copy-text]").forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.copyText||"");toast("Copied");}catch{toast("Copy failed");}});
-  root.querySelectorAll("[data-save]").forEach(b=>b.onclick=()=>{const r=results.find(x=>(x.result_key||x.item_id)===b.dataset.save);if(!r)return;if(!saved.some(x=>(x.result_key||x.item_id)===(r.result_key||r.item_id)))saved.unshift(r);saved=saved.slice(0,100);safeSet("wrota.rebuilt.saved",saved);renderSaved();renderResults();toast("Saved");});
+  root.querySelectorAll("[data-save]").forEach(b=>b.onclick=()=>{const r=results.find(x=>x.item_id===b.dataset.save);if(!r)return;if(!saved.some(x=>x.item_id===r.item_id))saved.unshift(r);saved=saved.slice(0,100);safeSet("wrota.rebuilt.saved",saved);renderSaved();renderResults();toast("Saved");});
 }
 function summaryText(){
   const f=getFilters();const p=[];
@@ -653,20 +688,22 @@ async function scan(){
       res.items.forEach(item=>{
         const id=listingId(item);if(!id)return;
         const targetKey=`${res.target.param}:${res.target.id}`;
-        const resultKey=`${targetKey}:${id}`;
-        const pack=found.get(resultKey)||{summary:{},labels:[label],rank:found.size,targetKey,resultKey,targetLabel:label};
+
+        // Global mixed feed: one account/listing only.
+        // If it matches multiple filters, keep all filters as badges on the same card.
+        const pack=found.get(id)||{summary:{},labels:[],targetKeys:[],rank:found.size,resultKey:id,targetLabel:""};
         pack.summary={...pack.summary,...item};
-        pack.labels=[label];
-        pack.targetKey=targetKey;
-        pack.resultKey=resultKey;
-        pack.targetLabel=label;
-        found.set(resultKey,pack);
+        pack.labels=[...new Set([...pack.labels,label])];
+        pack.targetKeys=[...new Set([...(pack.targetKeys||[]),targetKey])];
+        pack.targetLabel=pack.labels.length>1?`${pack.labels.length} matched targets`:pack.labels[0];
+        found.set(id,pack);
       });
       results=[...found.values()].map(p=>{
         const r=buildRecord(p.summary,{},p.labels,p.rank);
-        r.result_key=p.resultKey;
-        r.target_key=p.targetKey;
-        r.target_label=p.targetLabel;
+        r.result_key=p.resultKey || r.item_id;
+        r.target_keys=p.targetKeys || [];
+        r.target_label=p.targetLabel || (p.labels.length>1?`${p.labels.length} matched targets`:p.labels[0]);
+        r.match_count=p.labels.length;
         return r;
       });
       renderResults();
@@ -679,14 +716,15 @@ async function scan(){
       await pool(entries.map(([id,p])=>async()=>{
         const d=await detail(id);
         let rec=buildRecord(p.summary,d,p.labels,p.rank);
-        rec.result_key=p.resultKey;
-        rec.target_key=p.targetKey;
-        rec.target_label=p.targetLabel;
+        rec.result_key=p.resultKey || rec.item_id;
+        rec.target_keys=p.targetKeys || [];
+        rec.target_label=p.targetLabel || (p.labels.length>1?`${p.labels.length} matched targets`:p.labels[0]);
+        rec.match_count=p.labels.length;
         rec=await enrichFromListingPage(rec);
         return rec;
       }),Math.min(parallel,6),(done,total,idx,res)=>{
         if(res&&!res.error){
-          const pos=results.findIndex(x=>(x.result_key||x.item_id)===(res.result_key||res.item_id));
+          const pos=results.findIndex(x=>x.item_id===res.item_id);
           if(pos>=0)results[pos]=res;else results.push(res);
           renderResults();
         }
