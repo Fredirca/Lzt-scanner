@@ -3,293 +3,285 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Wrota Review Console</title>
-  <link rel="stylesheet" href="styles.css?v=select-outfits-1">
+  <title>Wrota Pro Scanner</title>
+  <link rel="stylesheet" href="styles.css?v=rebuild-pro-1">
 </head>
 <body>
-  <div class="shell">
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-mark">W</div>
+  <div class="app">
+    <aside class="rail">
+      <div class="logo">
+        <div class="logo-mark">W</div>
         <div>
-          <h1>Wrota</h1>
-          <p>Review Console</p>
+          <strong>Wrota</strong>
+          <span>Pro Scanner</span>
         </div>
       </div>
-      <nav class="nav">
-        <a href="#scanner" class="active">Scanner</a>
+
+      <nav>
+        <a href="#scan" class="active">Scan</a>
         <a href="#results">Results</a>
-        <a href="#cases">Cases</a>
+        <a href="#saved">Saved</a>
       </nav>
-      <div class="mini-panel">
-        <span>Session</span>
-        <strong id="sessionState">Not connected</strong>
+
+      <div class="rail-card">
+        <span>Status</span>
+        <strong id="sessionState">Ready</strong>
       </div>
     </aside>
 
-    <main class="main">
-      <section class="hero" id="scanner">
+    <main class="workspace">
+      <section class="hero" id="scan">
         <div>
-          <span class="eyebrow">Pro cosmetic-filter scan</span>
-          <h2>Locker Scanner</h2>
-          <p class="subtle">Fast cosmetic scanning with locker images pulled from actual LZT listing pages.</p>
+          <span class="pill">Rebuilt from scratch</span>
+          <h1>Fortnite listing scanner</h1>
+          <p>Exact cosmetic filters, fast marketplace order, clean results, and locker images without the clutter.</p>
         </div>
-        <div class="hero-side">
-          <div class="speed-badge" id="speedBadge">⚡ Turbo ready</div>
-          <div class="status-card">
-            <span id="statusDot" class="dot idle"></span>
-            <div>
-              <small>Status</small>
-              <strong id="status">Ready</strong>
-            </div>
-          </div>
+        <div class="hero-actions">
+          <div class="speed-pill" id="speedBadge">⚡ Ready</div>
+          <button id="scanBtn" class="primary big" type="button">Scan now</button>
         </div>
       </section>
 
-      <section class="panel access-panel">
-        <form id="accessForm" autocomplete="on">
-          <div class="panel-head">
+      <section class="grid setup-grid">
+        <article class="panel access-card">
+          <div class="panel-title">
             <div>
-              <h3>Access</h3>
-              <p>Enter your API key for this browser.</p>
+              <span class="step">01</span>
+              <h2>Access</h2>
             </div>
+            <button id="toggleKey" class="ghost small" type="button">Show</button>
           </div>
 
-          <input class="visually-hidden" type="text" name="username" autocomplete="username" value="wrota-lzt-api" tabindex="-1" aria-hidden="true">
-
-          <div class="key-row">
+          <form id="accessForm" autocomplete="on">
+            <input class="sr-only" type="text" name="username" autocomplete="username" value="wrota-lzt-api" tabindex="-1" aria-hidden="true">
             <input id="apiToken" name="lzt_api_key" type="password" autocomplete="current-password" placeholder="LZT API key">
-            <button id="toggleKey" class="ghost" type="button">Show</button>
+            <div class="button-row">
+              <button id="testBtn" class="secondary" type="submit">Test key</button>
+              <button id="clearKeyBtn" class="ghost" type="button">Clear</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="panel target-card">
+          <div class="panel-title">
+            <div>
+              <span class="step">02</span>
+              <h2>Targets</h2>
+            </div>
+            <button id="resetTargetsBtn" class="ghost small" type="button">Reset</button>
           </div>
 
-          <div class="actions">
-            <button id="testBtn" class="secondary" type="submit">Test key</button>
-            <button id="scanBtn" class="primary" type="button">Scan now</button>
-            <button id="clearKeyBtn" class="ghost" type="button">Clear</button>
+          <div class="target-input">
+            <input id="targetInput" type="text" placeholder="Paste skin[]=..., pickaxe[]=..., URL, or raw ID">
+            <button id="addTargetBtn" class="secondary" type="button">Add</button>
           </div>
-        </form>
+
+          <div id="targetChips" class="target-chips"></div>
+          <textarea id="bulkTargets" rows="4" spellcheck="false" placeholder="Bulk paste filters here, one per line or separated by spaces."></textarea>
+
+          <div class="button-row">
+            <button id="parseBulkBtn" class="ghost" type="button">Parse bulk</button>
+            <button id="ogPresetBtn" class="ghost" type="button">Load OG set</button>
+          </div>
+        </article>
       </section>
 
-      <section class="panel">
-        <div class="panel-head">
+      <section class="panel control-card">
+        <div class="panel-title">
           <div>
-            <h3>Select cosmetics</h3>
-            <p>Paste full LZT filter params or raw cosmetic IDs. The scan will use exact <code>skin[]</code> and <code>pickaxe[]</code> values from this field.</p>
+            <span class="step">03</span>
+            <h2>Scan controls</h2>
           </div>
-          <button id="resetCosmeticsBtn" class="ghost small" type="button">Reset</button>
+          <button id="openFiltersBtn" class="ghost small" type="button">Filters</button>
         </div>
 
-        <div class="chosen-container">
-          <div class="chosen-choices">
-            <input id="cosmeticSearchInput" class="chosen-search-input default" type="text" autocomplete="off" value="" placeholder="Select cosmetics">
-          </div>
+        <div class="control-grid">
+          <label>
+            <span>Marketplace order</span>
+            <select id="marketOrder">
+              <option value="pdate_to_down_upload">Newest uploaded</option>
+              <option value="pdate_to_up_upload">Oldest uploaded</option>
+              <option value="price_to_up">Cheapest first</option>
+              <option value="price_to_down">Highest price</option>
+              <option value="pdate_to_down">Newest listed</option>
+              <option value="pdate_to_up">Oldest listed</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Depth</span>
+            <input id="pagesPerTarget" type="number" min="1" max="25" value="3">
+          </label>
+
+          <label>
+            <span>Parallel</span>
+            <input id="parallelRequests" type="number" min="1" max="10" value="5">
+          </label>
+
+          <label>
+            <span>Delay</span>
+            <input id="scanDelay" type="number" min="0" max="15000" value="250">
+          </label>
+
+          <label class="toggle">
+            <input id="enrichDetails" type="checkbox" checked>
+            <span>Enrich details</span>
+          </label>
+
+          <label class="toggle">
+            <input id="lockerImages" type="checkbox" checked>
+            <span>Locker images</span>
+          </label>
         </div>
 
-        <div class="hint-box">
-          Examples:
-          <code>pickaxe[]=pickaxe_lockjaw_og skin%5B%5D=030_athena_commando_m_halloween_og skin[]=029_athena_commando_f_halloween_og</code>
-          <code>028_athena_commando_f_og, 017_athena_commando_m_og</code>
+        <div class="quick-orders">
+          <button class="order-chip active" data-order="pdate_to_down_upload" type="button">Newest uploaded</button>
+          <button class="order-chip" data-order="price_to_up" type="button">Cheapest</button>
+          <button class="order-chip" data-order="price_to_down" type="button">Highest price</button>
+          <button class="order-chip" data-order="pdate_to_down" type="button">Newest listed</button>
         </div>
-
-        <div id="activeCosmetics" class="chip-row"></div>
-      </section>
-
-
-      <section class="panel filter-lab" id="filters">
-        <div class="panel-head">
-          <div>
-            <span class="mini-eyebrow">Filter Lab</span>
-            <h3>Listing filters</h3>
-            <p>Refine what gets shown. Price/title filters are also sent with each scan where supported.</p>
-          </div>
-          <div class="split">
-            <button id="applyPresetFresh" class="ghost small" type="button">Fresh</button>
-            <button id="applyPresetBudget" class="ghost small" type="button">Budget</button>
-            <button id="applyPresetPremium" class="ghost small" type="button">Premium</button>
-            <button id="resetFiltersBtn" class="ghost small" type="button">Reset</button>
-          </div>
-        </div>
-
-        <div class="filter-command">
-          <div class="command-icon">⌕</div>
-          <input id="filterSearch" type="text" placeholder="Search title, seller, country, exclusives…">
-          <button id="clearSearchBtn" class="ghost small" type="button">Clear</button>
-        </div>
-
-        <div class="filter-grid-pro">
-          <div class="filter-stack">
-            <label><span>Price from</span><input id="priceMin" type="number" min="0" placeholder="0"></label>
-            <label><span>Price to</span><input id="priceMax" type="number" min="0" placeholder="Any"></label>
-          </div>
-
-          <div class="filter-stack">
-            <label><span>Skin count from</span><input id="skinMin" type="number" min="0" placeholder="Any"></label>
-            <label><span>Skin count to</span><input id="skinMax" type="number" min="0" placeholder="Any"></label>
-          </div>
-
-          <div class="filter-stack">
-            <label><span>Level from</span><input id="levelMin" type="number" min="0" placeholder="Any"></label>
-            <label><span>Level to</span><input id="levelMax" type="number" min="0" placeholder="Any"></label>
-          </div>
-
-          <div class="filter-stack">
-            <label><span>Seller</span><input id="sellerFilter" type="text" placeholder="username"></label>
-            <label><span>Country</span><input id="countryFilter" type="text" placeholder="FI, US, AU…"></label>
-          </div>
-
-          <div class="filter-stack">
-            <label><span>Email</span>
-              <select id="emailFilter">
-                <option value="">Any</option>
-                <option value="yes">Changeable ✅</option>
-                <option value="no">Not changeable ❌</option>
-                <option value="known">Known only</option>
-                <option value="same">Same email</option>
-              </select>
-            </label>
-            <label><span>Marketplace order</span>
-              <select id="marketOrder">
-                <option value="pdate_to_down_upload">Newest uploaded</option>
-                <option value="pdate_to_up_upload">Oldest uploaded</option>
-                <option value="price_to_up">Cheapest first</option>
-                <option value="price_to_down">Highest price</option>
-                <option value="pdate_to_down">Newest listed</option>
-                <option value="pdate_to_up">Oldest listed</option>
-              </select>
-            </label>
-          </div>
-
-          <div class="filter-stack">
-            <label><span>Must include</span><input id="includeTerms" type="text" placeholder="travis, black knight"></label>
-            <label><span>Exclude</span><input id="excludeTerms" type="text" placeholder="stacked, fake, no email"></label>
-          </div>
-
-          <div class="filter-stack">
-            <label><span>Display sort</span>
-              <select id="sortFilter">
-                <option value="market">Marketplace order</option>
-                <option value="uploaded_desc">Newest uploaded</option>
-                <option value="uploaded_asc">Oldest uploaded</option>
-                <option value="listed_desc">Newest listed</option>
-                <option value="activity_desc">Last active first</option>
-                <option value="price_asc">Cheapest first</option>
-                <option value="price_desc">Highest price</option>
-                <option value="skins_desc">Most skins</option>
-                <option value="level_desc">Highest level</option>
-              </select>
-            </label>
-            <label><span>Quick order</span>
-              <select id="quickOrder">
-                <option value="">No quick filter</option>
-                <option value="today">Uploaded today</option>
-                <option value="week">Uploaded this week</option>
-                <option value="active30">Active last 30 days</option>
-                <option value="has_price">Has price</option>
-              </select>
-            </label>
-          </div>
-
-          <div class="filter-stack">
-            <label><span>Uploaded after</span><input id="uploadedAfter" type="date"></label>
-            <label><span>Uploaded before</span><input id="uploadedBefore" type="date"></label>
-          </div>
-
-          <div class="filter-stack">
-            <label><span>Activity after</span><input id="activityAfter" type="date"></label>
-            <label><span>Activity before</span><input id="activityBefore" type="date"></label>
-          </div>
-        </div>
-
-        <div class="toggle-row">
-          <label class="toggle-card"><input id="hideUnknownPrice" type="checkbox"><span>Hide unknown price</span></label>
-          <label class="toggle-card"><input id="hideUnknownSeller" type="checkbox"><span>Hide unknown seller</span></label>
-          <label class="toggle-card"><input id="hideUnknownCountry" type="checkbox"><span>Hide unknown country</span></label>
-          <label class="toggle-card"><input id="onlyFullInfo" type="checkbox"><span>Only full info</span></label>
-          <label class="toggle-card"><input id="hasImagesOnly" type="checkbox"><span>Has inventory images</span></label>
-        </div>
-
-        <div class="filter-summary" id="filterSummary">No extra filters active</div>
-        <div class="order-help" id="orderHelpText">Marketplace order is applied when you run a scan.</div>
-        <div class="order-chip-row">
-          <button class="order-chip active" data-order-preset="pdate_to_down_upload" type="button">Newest uploaded</button>
-          <button class="order-chip" data-order-preset="price_to_up" type="button">Cheapest</button>
-          <button class="order-chip" data-order-preset="price_to_down" type="button">Highest price</button>
-          <button class="order-chip" data-order-preset="pdate_to_down" type="button">Newest listed</button>
-        </div>
-      </section>
-
-      <section class="panel compact">
-        <details>
-          <summary>Scan settings</summary>
-          <div class="settings">
-            <label><span>Depth</span><input id="pagesPerFilter" type="number" value="3" min="1" max="25"></label>
-            <label><span>Delay</span><input id="requestDelay" type="number" value="250" min="0" max="15000"></label>
-            <label><span>Parallel requests</span><input id="maxConcurrent" type="number" value="5" min="1" max="10"></label>
-            <label><span>Enrich details</span><input id="enrichDetails" type="checkbox" checked></label>
-            <label><span>Locker images</span><input id="showInventoryImages" type="checkbox" checked></label>
-            <label><span>Scrape locker page</span><input id="scrapeListingPageImages" type="checkbox" checked></label>
-            <label><span>Stop on rate limit</span><input id="stopOn429" type="checkbox" checked></label>
-          </div>
-        </details>
       </section>
 
       <section class="stats">
-        <div class="stat"><span>Turbo matches</span><strong id="statMatches">0</strong></div>
-        <div class="stat"><span>Saved cases</span><strong id="statCases">0</strong></div>
-        <div class="stat"><span>Last scan</span><strong id="statLastScan">—</strong></div>
+        <div><span>Shown</span><strong id="statShown">0</strong></div>
+        <div><span>Total found</span><strong id="statFound">0</strong></div>
+        <div><span>Saved</span><strong id="statSaved">0</strong></div>
+        <div><span>Last scan</span><strong id="statLast">—</strong></div>
       </section>
 
-      <section class="panel" id="results">
-        <div class="panel-head">
+      <section class="panel results-panel" id="results">
+        <div class="results-head">
           <div>
-            <h3>Enriched results</h3>
-            <p id="resultsSubtitle">Add outfit filters, then run a scan.</p>
+            <span class="step">04</span>
+            <h2>Live results</h2>
+            <p id="resultSubtitle">Run a scan to see matching numeric listings.</p>
           </div>
-          <button id="exportResultsBtn" class="ghost small" type="button">Export results</button>
-        </div>
-
-        <div class="result-toolbar">
-          <div class="view-toggle">
-            <button id="viewCardsBtn" class="active" type="button">Cards</button>
-            <button id="viewCompactBtn" type="button">Compact</button>
+          <div class="result-actions">
+            <button id="compactViewBtn" class="ghost small" type="button">Compact</button>
+            <button id="exportResultsBtn" class="ghost small" type="button">Export</button>
           </div>
-          <div class="result-note" id="resultNote">Turbo results update live. Locker images are pulled from listing pages when available.</div>
         </div>
 
         <div id="progressWrap" class="progress-wrap hidden">
-          <div class="progress-top">
+          <div class="progress-line">
             <span id="progressLabel">Scanning</span>
-            <span id="progressNumber">0%</span>
+            <b id="progressNumber">0%</b>
           </div>
           <div class="progress"><div id="progressBar"></div></div>
         </div>
-        <div id="resultsBox" class="empty-state">
+
+        <div id="resultsBox" class="empty">
           <div class="empty-icon">⌕</div>
-          <h4>No results yet</h4>
-          <p>Start a scan to populate this workspace.</p>
+          <h3>No results yet</h3>
+          <p>Hit Scan now when your targets are ready.</p>
         </div>
       </section>
 
-      <section class="panel" id="cases">
-        <div class="panel-head">
+      <section class="panel" id="saved">
+        <div class="results-head">
           <div>
-            <h3>Saved cases</h3>
-            <p>Matched listings kept in this browser.</p>
+            <h2>Saved cases</h2>
+            <p>Kept locally in this browser.</p>
           </div>
-          <div class="split">
-            <button id="exportCasesBtn" class="ghost small" type="button">Export cases</button>
-            <button id="clearCasesBtn" class="ghost danger small" type="button">Clear</button>
+          <div class="result-actions">
+            <button id="exportSavedBtn" class="ghost small" type="button">Export</button>
+            <button id="clearSavedBtn" class="ghost danger small" type="button">Clear</button>
           </div>
         </div>
-        <div id="casesBox" class="empty-state small-empty">
+        <div id="savedBox" class="empty small-empty">
           <div class="empty-icon">□</div>
-          <h4>No saved cases</h4>
-          <p>Enriched matches will appear here after scanning.</p>
+          <h3>No saved cases</h3>
         </div>
       </section>
     </main>
   </div>
 
-  <script src="app-select-outfits.js?v=select-outfits-1"></script>
+  <div id="filterDrawer" class="drawer" aria-hidden="true">
+    <div class="drawer-backdrop" id="closeFiltersBackdrop"></div>
+    <aside class="drawer-panel">
+      <div class="drawer-head">
+        <div>
+          <span class="pill">Filter Lab</span>
+          <h2>Refine results</h2>
+        </div>
+        <button id="closeFiltersBtn" class="ghost small" type="button">Close</button>
+      </div>
+
+      <label class="wide">
+        <span>Search</span>
+        <input id="filterSearch" type="text" placeholder="Title, seller, country, exclusive…">
+      </label>
+
+      <div class="drawer-grid">
+        <label><span>Price from</span><input id="priceMin" type="number" min="0"></label>
+        <label><span>Price to</span><input id="priceMax" type="number" min="0"></label>
+        <label><span>Skins from</span><input id="skinMin" type="number" min="0"></label>
+        <label><span>Skins to</span><input id="skinMax" type="number" min="0"></label>
+        <label><span>Level from</span><input id="levelMin" type="number" min="0"></label>
+        <label><span>Level to</span><input id="levelMax" type="number" min="0"></label>
+        <label><span>Seller</span><input id="sellerFilter" type="text"></label>
+        <label><span>Country</span><input id="countryFilter" type="text"></label>
+      </div>
+
+      <label class="wide">
+        <span>Email status</span>
+        <select id="emailFilter">
+          <option value="">Any</option>
+          <option value="yes">Changeable ✅</option>
+          <option value="no">Not changeable ❌</option>
+          <option value="known">Known only</option>
+          <option value="same">Same email</option>
+        </select>
+      </label>
+
+      <label class="wide">
+        <span>Display sort</span>
+        <select id="displaySort">
+          <option value="market">Marketplace order</option>
+          <option value="price_asc">Cheapest first</option>
+          <option value="price_desc">Highest price</option>
+          <option value="skins_desc">Most skins</option>
+          <option value="level_desc">Highest level</option>
+          <option value="activity_desc">Last active</option>
+        </select>
+      </label>
+
+      <div class="drawer-grid">
+        <label><span>Uploaded after</span><input id="uploadedAfter" type="date"></label>
+        <label><span>Activity after</span><input id="activityAfter" type="date"></label>
+      </div>
+
+      <label class="wide">
+        <span>Must include</span>
+        <input id="includeTerms" type="text" placeholder="travis, black knight">
+      </label>
+
+      <label class="wide">
+        <span>Exclude</span>
+        <input id="excludeTerms" type="text" placeholder="fake, no email">
+      </label>
+
+      <div class="toggles">
+        <label><input id="hideUnknownPrice" type="checkbox"> Hide unknown price</label>
+        <label><input id="hideUnknownSeller" type="checkbox"> Hide unknown seller</label>
+        <label><input id="hideUnknownCountry" type="checkbox"> Hide unknown country</label>
+        <label><input id="hasImagesOnly" type="checkbox"> Has locker images</label>
+        <label><input id="onlyFullInfo" type="checkbox"> Only full info</label>
+      </div>
+
+      <div class="drawer-actions">
+        <button id="presetFreshBtn" class="secondary" type="button">Fresh</button>
+        <button id="presetBudgetBtn" class="secondary" type="button">Budget</button>
+        <button id="presetPremiumBtn" class="secondary" type="button">Premium</button>
+        <button id="resetFiltersBtn" class="ghost" type="button">Reset</button>
+      </div>
+
+      <div id="filterSummary" class="summary">No extra filters active</div>
+    </aside>
+  </div>
+
+  <div id="toastHost" class="toast-host"></div>
+
+  <script src="app.js?v=rebuild-pro-1"></script>
 </body>
 </html>
