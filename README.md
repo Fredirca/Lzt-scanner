@@ -36,3 +36,21 @@ Email Changeable: ❌
 ```
 
 It also adds a `Copy message` button for each result.
+
+
+## Real listing fix
+
+This build rejects cosmetic catalogue entries such as:
+
+```text
+cid_713_athena_commando_m_maskedwarriorspring
+cid_a_024_athena_commando_f_skirmish_qw2bq
+```
+
+Only real numeric LZT listing/account IDs are accepted, so result links should look like:
+
+```text
+https://lzt.market/244307015/
+```
+
+It also avoids using nested cosmetic names as titles, which caused bad titles like `Xander`.

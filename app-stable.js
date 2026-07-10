@@ -91,33 +91,33 @@ function priceText(value, currency="USD"){
 function compactCase(item){
   if(!item || typeof item!=="object") return item;
 
-  const id=String(item.item_id ?? item.itemId ?? item.id ?? item.account_id ?? "");
-  const filters=item.matched_filters || item.matched_terms || item._matchedFilters || [];
-  const url=item.url || item.link || item.market_url || (id?`https://lzt.market/${id}/`:"");
+  const id = listingId(item) || String(item.item_id ?? item.itemId ?? item.account_id ?? "");
+  const filters = item.matched_filters || item.matched_terms || item._matchedFilters || [];
+  const url = item.url || item.link || item.market_url || (id && /^\d+$/.test(String(id)) ? `https://lzt.market/${id}/` : "");
 
   return {
     createdAt:item.createdAt || item.created_at || new Date().toISOString(),
     item_id:id,
-    title:item.title || item.name || item.item_title || (id?`Listing ${id}`:"Listing"),
+    title:item.title || item.item_title || item.name || (id?`Listing ${id}`:"Listing"),
     skin_count:firstValue(item,["skin_count","skins_count","skins","outfits_count","outfit_count"],"Unknown"),
     exclusives:Array.isArray(filters) && filters.length ? filters.join(", ") : firstValue(item,["exclusives"],"Unknown"),
     email_changeable:firstValue(item,["email_changeable","change_email","changeable_email","can_change_email"],"Unknown"),
-    price:item.price ?? item.price_usd ?? "",
+    price:item.price ?? item.price_usd ?? item.cost ?? item.amount ?? "",
     currency:item.currency || item.price_currency || "USD",
-    seller:typeof item.seller==="string" ? item.seller : (item.seller?.username || item.seller?.name || item.user?.username || item.username || ""),
+    seller:typeof item.seller==="string" ? item.seller : (item.seller?.username || item.seller?.name || item.user?.username || item.username || item.seller_username || ""),
     season_level:firstValue(item,["season_level","level","account_level"],"Unknown"),
     country:firstValue(item,["country","country_code","origin"],"Unknown"),
     last_activity:firstValue(item,["last_activity","last_activity_at","last_seen","last_login"],"Unknown"),
     url:url,
     matched_filters:Array.isArray(filters)?filters:[String(filters)],
-    note:item.note || "Matched by LZT cosmetic filter"
+    note:item.note || "Matched by LZT listing filter"
   };
 }
 
 
 function loadCases(){
   const legacy=safeLocalGet("wrota.polished.cases.v1",[]);
-  memoryCases=Array.isArray(legacy)?legacy.map(compactCase).slice(0,100):[];
+  memoryCases=Array.isArray(legacy)?legacy.map(compactCase).filter(x=>/^\d+$/.test(String(x.item_id))).slice(0,100):[];
   safeLocalRemove("wrota.polished.results.v1");
   safeLocalRemove("wrota.results");
   safeLocalSet("wrota.polished.cases.v1",memoryCases);
@@ -131,7 +131,7 @@ function saveCases(list){
 }
 function currentResults(){return memoryResults;}
 function saveCurrentResults(list){
-  memoryResults=(Array.isArray(list)?list:[]).map(compactCase).slice(0,300);
+  memoryResults=(Array.isArray(list)?list:[]).map(compactCase).filter(x=>/^\d+$/.test(String(x.item_id))).slice(0,300);
   updateStats();
 }
 
@@ -164,9 +164,35 @@ function renderFilters(){
   `).join("");
 }
 
-function itemId(item){
-  return String(item?.item_id ?? item?.itemId ?? item?.id ?? item?.account_id ?? item?.accountId ?? "");
+function listingId(item){
+  const raw = item?.item_id ?? item?.itemId ?? item?.id ?? item?.account_id ?? item?.accountId ?? "";
+  const text = String(raw);
+  return /^\d+$/.test(text) ? text : "";
 }
+
+function itemId(item){
+  return listingId(item);
+}
+
+function isRealListing(item){
+  if(!item || typeof item !== "object") return false;
+
+  const id = listingId(item);
+  if(!id) return false;
+
+  // Reject Fortnite cosmetic catalogue IDs and cosmetic objects.
+  const textId = String(item.id || item.item_id || "");
+  if(textId.startsWith("cid_") || textId.startsWith("CID_") || textId.includes("athena_commando")) return false;
+
+  // Require listing/account-like evidence, not just a cosmetic object with a numeric internal id.
+  const hasTitle = Boolean(item.title || item.item_title || item.name);
+  const hasPrice = item.price !== undefined || item.price_usd !== undefined || item.cost !== undefined || item.amount !== undefined;
+  const hasSeller = Boolean(item.seller || item.seller_username || item.user || item.username);
+  const hasMarketUrl = Boolean(item.url || item.link || item.market_url);
+
+  return hasTitle && (hasPrice || hasSeller || hasMarketUrl || item.item_id !== undefined || item.account_id !== undefined);
+}
+
 function buildDirectUrl(path="/fortnite",params={}){
   const cleanPath=path.startsWith("/")?path:`/${path}`;
   const url=new URL(API_BASE+cleanPath);
@@ -203,22 +229,53 @@ async function lztGet(path="/fortnite",params={}){
   try{return JSON.parse(text);}catch{return {raw:text};}
 }
 function extractItems(data){
-  const seen=new Set(), out=[];
-  function walk(value){
-    if(!value)return;
-    if(Array.isArray(value)){value.forEach(walk);return;}
-    if(typeof value==="object"){
-      const id=itemId(value);
-      const hasListingShape=id&&(value.title||value.price||value.item_id||value.itemId||value.account_id||value.url);
-      if(hasListingShape&&!seen.has(id)){seen.add(id);out.push(value);}
-      for(const [key,next] of Object.entries(value)){
-        if(["items","data","results","list","accounts","market_items"].includes(key)||Array.isArray(next))walk(next);
+  const seen = new Set();
+  const out = [];
+
+  function add(value){
+    if(!isRealListing(value)) return;
+    const id = listingId(value);
+    if(!id || seen.has(id)) return;
+    seen.add(id);
+    out.push(value);
+  }
+
+  function walk(value, keyHint=""){
+    if(!value) return;
+
+    if(Array.isArray(value)){
+      value.forEach(x => walk(x, keyHint));
+      return;
+    }
+
+    if(typeof value !== "object") return;
+
+    add(value);
+
+    // Only recurse through likely API result containers.
+    // This avoids picking cosmetic catalogue entries like cid_... / Xander.
+    const allowedKeys = new Set([
+      "items",
+      "data",
+      "results",
+      "list",
+      "accounts",
+      "market_items",
+      "fortnite",
+      "response"
+    ]);
+
+    for(const [key,next] of Object.entries(value)){
+      if(allowedKeys.has(key) || Array.isArray(next)){
+        walk(next, key);
       }
     }
   }
+
   walk(data);
   return out;
 }
+
 function paramsForFilter(filter,page){
   const params={page,order_by:"pdate_to_down_upload",currency:"usd"};
   params[filter.param]=filter.id;
@@ -231,24 +288,34 @@ async function detail(id,fallback){
   catch(error){return {summary_only:fallback,error:error.message};}
 }
 function fieldSet(summary,detailData={}){
-  const merged={...summary,...(detailData?.item||detailData?.data||detailData||{})};
-  const id=itemId(merged)||itemId(summary)||itemId(detailData);
+  const detailRoot = detailData?.item || detailData?.data || detailData || {};
+  const merged = {...summary, ...detailRoot};
+  const id = listingId(merged) || listingId(summary) || listingId(detailRoot);
+
+  // Do NOT use a deep search for title/name, because that can pick cosmetic names like "Xander".
+  const title = merged.title || merged.item_title || summary?.title || summary?.item_title || (id ? `Listing ${id}` : "Listing");
+
+  const sellerObj = merged.seller || summary?.seller || merged.user || summary?.user || {};
+  const seller = typeof sellerObj === "string"
+    ? sellerObj
+    : (sellerObj.username || sellerObj.name || merged.seller_username || summary?.seller_username || merged.username || summary?.username || "");
 
   return compactCase({
     createdAt:new Date().toISOString(),
     item_id:id,
-    title:nestedValue(merged,["title","name","item_title"],id?`Listing ${id}`:"Listing"),
-    skin_count:nestedValue(merged,["skin_count","skins_count","skins","outfits_count","outfit_count"],"Unknown"),
-    email_changeable:nestedValue(merged,["email_changeable","change_email","changeable_email","can_change_email"],"Unknown"),
-    price:nestedValue(merged,["price","price_usd","cost","amount"],""),
-    currency:String(nestedValue(merged,["currency","price_currency"],"USD")).toUpperCase(),
-    seller:nestedValue(merged,["seller_username","seller_name","username","name"],""),
-    season_level:nestedValue(merged,["season_level","level","account_level"],"Unknown"),
-    country:nestedValue(merged,["country","country_code","origin"],"Unknown"),
-    last_activity:nestedValue(merged,["last_activity","last_activity_at","last_seen","last_login"],"Unknown"),
-    url:nestedValue(merged,["url","link","market_url"],id?`https://lzt.market/${id}/`:"")
+    title:title,
+    skin_count:merged.skin_count ?? merged.skins_count ?? merged.skins ?? merged.outfits_count ?? merged.outfit_count ?? summary?.skin_count ?? summary?.skins_count ?? "Unknown",
+    email_changeable:merged.email_changeable ?? merged.change_email ?? merged.changeable_email ?? merged.can_change_email ?? summary?.email_changeable ?? "Unknown",
+    price:merged.price ?? merged.price_usd ?? merged.cost ?? merged.amount ?? summary?.price ?? summary?.price_usd ?? "",
+    currency:String(merged.currency || merged.price_currency || summary?.currency || "USD").toUpperCase(),
+    seller:seller,
+    season_level:merged.season_level ?? merged.level ?? merged.account_level ?? summary?.season_level ?? summary?.level ?? "Unknown",
+    country:merged.country || merged.country_code || merged.origin || summary?.country || summary?.country_code || "Unknown",
+    last_activity:merged.last_activity || merged.last_activity_at || merged.last_seen || merged.last_login || summary?.last_activity || "Unknown",
+    url:merged.url || merged.link || merged.market_url || summary?.url || summary?.link || (id ? `https://lzt.market/${id}/` : "")
   });
 }
+
 
 function progress(done,total,label){
   const pct=total?Math.round((done/total)*100):0;
@@ -258,7 +325,8 @@ function progress(done,total,label){
   if($("progressBar"))$("progressBar").style.width=`${pct}%`;
 }
 function card(caseItem){
-  const link=caseItem.url || (caseItem.item_id?`https://lzt.market/${caseItem.item_id}/`:"");
+  const id = String(caseItem.item_id || "");
+  const link = /^\d+$/.test(id) ? (caseItem.url || `https://lzt.market/${id}/`) : "";
   const output =
 `New Fortnite listing on LZT Market
 
@@ -272,14 +340,14 @@ Email Changeable: ${iconBool(caseItem.email_changeable)}
 🔢 Season Level: ${caseItem.season_level || "Unknown"}
 🌍 Country: ${caseItem.country || "Unknown"}
 ⏱️ Last Activity: ${cleanDate(caseItem.last_activity)}
-🔗 Link: ${link}`;
+🔗 Link: ${link || "Unavailable"}`;
 
   return `<article class="listing-alert-card">
     <pre class="listing-output">${esc(output)}</pre>
     <div class="card-actions">
       ${link?`<a class="ghost small" target="_blank" rel="noopener" href="${esc(link)}">Open source</a>`:""}
       <button class="ghost small" type="button" data-copy-text="${esc(output)}">Copy message</button>
-      <button class="ghost small" type="button" data-copy="${esc(caseItem.item_id)}">Copy ID</button>
+      ${id?`<button class="ghost small" type="button" data-copy="${esc(id)}">Copy ID</button>`:""}
     </div>
     <details class="raw"><summary>Case data</summary><pre>${esc(JSON.stringify(caseItem,null,2))}</pre></details>
   </article>`;
@@ -363,8 +431,9 @@ async function scan(){
           const data=await lztGet("/fortnite",paramsForFilter(filter,page));
           const items=extractItems(data);
           for(const item of items){
-            const id=itemId(item);
-            if(!id)continue;
+            if(!isRealListing(item)) continue;
+            const id=listingId(item);
+            if(!id) continue;
             const existing=found.get(id)||item;
             existing._matchedFilters=[...new Set([...(existing._matchedFilters||[]),filter.label])];
             found.set(id,existing);
@@ -419,7 +488,7 @@ async function scan(){
     const stamp=new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
     safeLocalSet("wrota.lastScan",stamp);
     updateStats();
-    setSubtitle(errors.length?`Completed with ${errors.length} issue(s).`:"Scan complete.");
+    setSubtitle(finalResults.length ? (errors.length?`Completed with ${errors.length} issue(s).`:"Scan complete.") : "No real numeric LZT listings found for those OG filters.");
     setStatus(`Done · ${finalResults.length} found`,"ok");
   }catch(error){
     if(error.isRateLimit){
