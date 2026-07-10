@@ -1,27 +1,42 @@
-# Wrota Review Console — Strict OG Styles
+# Wrota Review Console — Select Outfits Filter
 
-This version fixes the false-positive issue.
+This version uses the outfit filter input idea.
 
-It does not treat normal cosmetic filters as proof.
+It includes this UI element:
 
-A listing is only shown if the listing title/details actually verify one of these OG styles:
-
-- Renegade Raider Black & Gold
-- Aerial Assault Trooper Black & Gold
-- Raider’s Revenge Black & Gold
-- Purple Skull Trooper
-- Pink Ghoul Trooper
-
-It also only accepts real numeric LZT listing IDs, so links look like:
-
-```text
-https://lzt.market/244307015/
+```html
+<input class="chosen-search-input default" type="text" autocomplete="off" value="Select outfits">
 ```
 
-and not:
+Use it by pasting either:
+
+1. A full LZT filtered URL, for example:
 
 ```text
-https://lzt.market/cid_...
+https://lzt.market/fortnite/?skin%5B%5D=030_athena_commando_m_halloween_og
 ```
 
-Upload all files to GitHub Pages and hard refresh.
+2. Raw outfit IDs, comma-separated:
+
+```text
+030_athena_commando_m_halloween_og, 029_athena_commando_f_halloween_og
+```
+
+The scanner extracts the `skin[]` values and scans those exact outfit filters.
+
+It still rejects cosmetic `cid_...` result links and only shows numeric LZT listing links.
+
+
+## Exact filters added
+
+This build has these exact defaults preloaded:
+
+```text
+pickaxe[]=pickaxe_lockjaw_og
+skin[]=030_athena_commando_m_halloween_og
+skin[]=029_athena_commando_f_halloween_og
+skin[]=028_athena_commando_f_og
+skin[]=017_athena_commando_m_og
+```
+
+The parser now supports both `skin[]` and `pickaxe[]` filters, including URL-encoded `skin%5B%5D=...`.

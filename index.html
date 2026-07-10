@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Wrota Review Console</title>
-  <link rel="stylesheet" href="styles.css?v=strict-og-styles-1">
+  <link rel="stylesheet" href="styles.css?v=select-outfits-1">
 </head>
 <body>
   <div class="shell">
@@ -30,9 +30,9 @@
     <main class="main">
       <section class="hero" id="scanner">
         <div>
-          <span class="eyebrow">Strict OG-style verification</span>
-          <h2>OG Style Scanner</h2>
-          <p class="subtle">Only shows listings whose own title/details verify an OG style.</p>
+          <span class="eyebrow">Exact cosmetic-filter scan</span>
+          <h2>Cosmetic Scanner</h2>
+          <p class="subtle">Uses exact skin[] and pickaxe[] filter values instead of title guessing.</p>
         </div>
         <div class="status-card">
           <span id="statusDot" class="dot idle"></span>
@@ -70,12 +70,25 @@
       <section class="panel">
         <div class="panel-head">
           <div>
-            <h3>OG style targets</h3>
-            <p>Normal versions are filtered out unless the listing itself verifies the OG style.</p>
+            <h3>Select cosmetics</h3>
+            <p>Paste full LZT filter params or raw cosmetic IDs. The scan will use exact <code>skin[]</code> and <code>pickaxe[]</code> values from this field.</p>
           </div>
-          <span class="count-pill" id="filterCount">0 active</span>
+          <button id="resetCosmeticsBtn" class="ghost small" type="button">Reset</button>
         </div>
-        <div id="filterGrid" class="filter-grid"></div>
+
+        <div class="chosen-container">
+          <div class="chosen-choices">
+            <input id="cosmeticSearchInput" class="chosen-search-input default" type="text" autocomplete="off" value="" placeholder="Select cosmetics">
+          </div>
+        </div>
+
+        <div class="hint-box">
+          Examples:
+          <code>pickaxe[]=pickaxe_lockjaw_og skin%5B%5D=030_athena_commando_m_halloween_og skin[]=029_athena_commando_f_halloween_og</code>
+          <code>028_athena_commando_f_og, 017_athena_commando_m_og</code>
+        </div>
+
+        <div id="activeCosmetics" class="chip-row"></div>
       </section>
 
       <section class="panel compact">
@@ -90,7 +103,7 @@
       </section>
 
       <section class="stats">
-        <div class="stat"><span>Verified matches</span><strong id="statMatches">0</strong></div>
+        <div class="stat"><span>Matches</span><strong id="statMatches">0</strong></div>
         <div class="stat"><span>Saved cases</span><strong id="statCases">0</strong></div>
         <div class="stat"><span>Last scan</span><strong id="statLastScan">—</strong></div>
       </section>
@@ -99,7 +112,7 @@
         <div class="panel-head">
           <div>
             <h3>Results</h3>
-            <p id="resultsSubtitle">Run a scan to review verified OG-style listings.</p>
+            <p id="resultsSubtitle">Add outfit filters, then run a scan.</p>
           </div>
           <button id="exportResultsBtn" class="ghost small" type="button">Export results</button>
         </div>
@@ -112,7 +125,7 @@
         </div>
         <div id="resultsBox" class="empty-state">
           <div class="empty-icon">⌕</div>
-          <h4>No verified OG styles yet</h4>
+          <h4>No results yet</h4>
           <p>Start a scan to populate this workspace.</p>
         </div>
       </section>
@@ -121,7 +134,7 @@
         <div class="panel-head">
           <div>
             <h3>Saved cases</h3>
-            <p>Verified matches kept in this browser.</p>
+            <p>Matched listings kept in this browser.</p>
           </div>
           <div class="split">
             <button id="exportCasesBtn" class="ghost small" type="button">Export cases</button>
@@ -131,12 +144,12 @@
         <div id="casesBox" class="empty-state small-empty">
           <div class="empty-icon">□</div>
           <h4>No saved cases</h4>
-          <p>Verified matches will appear here after scanning.</p>
+          <p>Matches will appear here after scanning.</p>
         </div>
       </section>
     </main>
   </div>
 
-  <script src="app-strict-og.js?v=strict-og-styles-1"></script>
+  <script src="app-select-outfits.js?v=select-outfits-1"></script>
 </body>
 </html>
