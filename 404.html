@@ -2,105 +2,121 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Wrota Pro Scanner</title>
-  <link rel="stylesheet" href="styles.css?v=rebuild-pro-1">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Wrota LZT Checker</title>
+  <meta name="description" content="Read-only Fortnite listing review scanner with global mixed feed and locker image proxy.">
+  <link rel="stylesheet" href="styles.css?v=ultimate-1">
 </head>
 <body>
-  <div class="app">
-    <aside class="rail">
-      <div class="logo">
-        <div class="logo-mark">W</div>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">W</div>
         <div>
           <strong>Wrota</strong>
-          <span>Pro Scanner</span>
+          <span>LZT Checker</span>
         </div>
       </div>
 
-      <nav>
-        <a href="#scan" class="active">Scan</a>
-        <a href="#results">Results</a>
+      <nav class="nav">
+        <a href="#scanner" class="active">Scanner</a>
+        <a href="#feed">Feed</a>
         <a href="#saved">Saved</a>
+        <a href="#debug">Debug</a>
       </nav>
 
-      <div class="rail-card">
-        <span>Status</span>
-        <strong id="sessionState">Ready</strong>
+      <div class="side-card">
+        <span class="side-label">Mode</span>
+        <strong>Read-only review</strong>
+        <p>No buying tools. No seller contact tools. Scanner only.</p>
       </div>
     </aside>
 
-    <main class="workspace">
-      <section class="hero" id="scan">
+    <main class="main">
+      <section class="hero" id="scanner">
         <div>
-          <span class="pill">Rebuilt from scratch</span>
-          <h1>Fortnite listing scanner</h1>
-          <p>Exact cosmetic filters, interleaved scanning, one mixed global feed, and direct LZT locker image embeds.</p>
+          <span class="eyebrow">Ultimate rebuild</span>
+          <h1>Global mixed feed. Real locker images. No clunky patches.</h1>
+          <p>Scans exact Fortnite cosmetic targets, merges duplicate listings into one card, keeps all matched badges, sorts globally, and loads locker images through a dedicated image proxy fallback.</p>
         </div>
-        <div class="hero-actions">
-          <div class="speed-pill" id="speedBadge">⚡ Ready</div>
-          <button id="scanBtn" class="primary big" type="button">Scan now</button>
+        <div class="hero-panel">
+          <div id="statusPill" class="status-pill">Ready</div>
+          <button id="scanBtn" class="primary jumbo">Scan now</button>
         </div>
       </section>
 
-      <section class="grid setup-grid">
-        <article class="panel access-card">
-          <div class="panel-title">
+      <section class="setup-grid">
+        <article class="panel">
+          <div class="panel-head">
             <div>
               <span class="step">01</span>
-              <h2>Access</h2>
+              <h2>Connection</h2>
             </div>
-            <button id="toggleKey" class="ghost small" type="button">Show</button>
+            <button id="toggleSecretsBtn" class="ghost small">Show</button>
           </div>
 
-          <form id="accessForm" autocomplete="on">
-            <input class="sr-only" type="text" name="username" autocomplete="username" value="wrota-lzt-api" tabindex="-1" aria-hidden="true">
-            <input id="apiToken" name="lzt_api_key" type="password" autocomplete="current-password" placeholder="LZT API key">
-            <div class="button-row">
-              <button id="testBtn" class="secondary" type="submit">Test key</button>
-              <button id="clearKeyBtn" class="ghost" type="button">Clear</button>
-            </div>
-          </form>
+          <label>
+            <span>Worker / proxy URL</span>
+            <input id="workerUrl" type="url" spellcheck="false" placeholder="https://your-worker.workers.dev">
+          </label>
+
+          <label>
+            <span>LZT API key</span>
+            <input id="apiKey" name="lzt_api_key" type="password" autocomplete="current-password" placeholder="Paste API key">
+          </label>
+
+          <label>
+            <span>Optional LZT cookie for images</span>
+            <input id="lztCookie" type="password" autocomplete="off" placeholder="Only if image endpoint needs browser session">
+          </label>
+
+          <div class="row">
+            <button id="testBtn" class="secondary">Test connection</button>
+            <button id="saveConfigBtn" class="ghost">Save locally</button>
+            <button id="clearConfigBtn" class="ghost danger">Clear</button>
+          </div>
+
+          <p class="help">Use the included Cloudflare Worker for best image reliability. The cookie field is optional and stays in your browser unless you send requests through your Worker.</p>
         </article>
 
-        <article class="panel target-card">
-          <div class="panel-title">
+        <article class="panel">
+          <div class="panel-head">
             <div>
               <span class="step">02</span>
               <h2>Targets</h2>
             </div>
-            <button id="resetTargetsBtn" class="ghost small" type="button">Reset</button>
+            <div class="mini-actions">
+              <button id="loadOgBtn" class="ghost small">OG set</button>
+              <button id="clearTargetsBtn" class="ghost small">Clear</button>
+            </div>
           </div>
 
-          <div class="target-input">
-            <input id="targetInput" type="text" placeholder="Paste skin[]=..., pickaxe[]=..., URL, or raw ID">
-            <button id="addTargetBtn" class="secondary" type="button">Add</button>
+          <div class="target-add">
+            <input id="targetInput" placeholder="Paste skin[]=..., pickaxe[]=..., URL, or raw cosmetic ID">
+            <button id="addTargetBtn" class="secondary">Add</button>
           </div>
 
-          <details class="target-details">
-            <summary>
-              <span>Active scan targets</span>
-              <b id="targetCount">0</b>
-            </summary>
-            <p class="target-help">Targets are only search inputs. They do not control the final result order.</p>
-            <div id="targetChips" class="target-chips"></div>
+          <details class="targets-drawer" open>
+            <summary><span>Active targets</span><b id="targetCount">0</b></summary>
+            <p>Targets are scan inputs only. Results are always one global mixed feed.</p>
+            <div id="targetList" class="target-list"></div>
           </details>
 
-          <textarea id="bulkTargets" rows="4" spellcheck="false" placeholder="Bulk paste filters here, one per line or separated by spaces."></textarea>
+          <textarea id="bulkTargets" rows="5" spellcheck="false" placeholder="Bulk paste targets here. Example:
+pickaxe[]=pickaxe_lockjaw_og
+skin[]=030_athena_commando_m_halloween_og"></textarea>
 
-          <div class="button-row">
-            <button id="parseBulkBtn" class="ghost" type="button">Parse bulk</button>
-            <button id="ogPresetBtn" class="ghost" type="button">Load OG set</button>
-          </div>
+          <button id="parseBulkBtn" class="ghost">Parse bulk targets</button>
         </article>
       </section>
 
-      <section class="panel control-card">
-        <div class="panel-title">
+      <section class="panel controls">
+        <div class="panel-head">
           <div>
             <span class="step">03</span>
             <h2>Scan controls</h2>
           </div>
-          <button id="openFiltersBtn" class="ghost small" type="button">Filters</button>
+          <button id="openFiltersBtn" class="secondary small">Filter Lab</button>
         </div>
 
         <div class="control-grid">
@@ -115,86 +131,77 @@
               <option value="pdate_to_up">Oldest listed</option>
             </select>
           </label>
-
           <label>
-            <span>Depth</span>
-            <input id="pagesPerTarget" type="number" min="1" max="25" value="3">
+            <span>Pages per target</span>
+            <input id="pagesPerTarget" type="number" min="1" max="50" value="5">
           </label>
-
           <label>
-            <span>Parallel</span>
-            <input id="parallelRequests" type="number" min="1" max="10" value="5">
+            <span>Parallel requests</span>
+            <input id="parallel" type="number" min="1" max="12" value="4">
           </label>
-
           <label>
-            <span>Delay</span>
-            <input id="scanDelay" type="number" min="0" max="15000" value="250">
+            <span>Delay ms</span>
+            <input id="delay" type="number" min="0" max="30000" value="300">
           </label>
-
-          <label class="toggle">
-            <input id="enrichDetails" type="checkbox" checked>
-            <span>Enrich details</span>
+          <label class="check">
+            <input id="enrichPages" type="checkbox" checked>
+            <span>Enrich from listing pages</span>
           </label>
-
-          <label class="toggle">
-            <input id="lockerImages" type="checkbox" checked>
-            <span>Direct locker images</span>
+          <label class="check">
+            <input id="useImageProxy" type="checkbox" checked>
+            <span>Use image proxy fallback</span>
           </label>
         </div>
 
-        <div class="global-order-note" id="globalOrderNote">Newest uploaded sorts the combined account feed, not each target separately.</div>
-        <div class="quick-orders">
-          <button class="order-chip active" data-order="pdate_to_down_upload" type="button">Newest uploaded</button>
-          <button class="order-chip" data-order="price_to_up" type="button">Cheapest</button>
-          <button class="order-chip" data-order="price_to_down" type="button">Highest price</button>
-          <button class="order-chip" data-order="pdate_to_down" type="button">Newest listed</button>
-        </div>
+        <div class="order-note">Newest uploaded is applied to every target request, then final results are globally sorted across the mixed feed.</div>
       </section>
 
-      <section class="stats">
+      <section class="stat-grid">
         <div><span>Shown</span><strong id="statShown">0</strong></div>
-        <div><span>Accounts</span><strong id="statFound">0</strong></div>
+        <div><span>Unique listings</span><strong id="statUnique">0</strong></div>
+        <div><span>Target hits</span><strong id="statHits">0</strong></div>
+        <div><span>Images failed</span><strong id="statImageFail">0</strong></div>
         <div><span>Saved</span><strong id="statSaved">0</strong></div>
-        <div><span>Last scan</span><strong id="statLast">—</strong></div>
       </section>
 
-      <section class="panel results-panel" id="results">
-        <div class="results-head">
+      <section class="panel feed-panel" id="feed">
+        <div class="feed-head">
           <div>
             <span class="step">04</span>
-            <h2>Live results</h2>
-            <p id="resultSubtitle">Run a scan to see one global mixed feed. Target chips are scan inputs only; results are sorted globally.</p>
+            <h2>Global mixed feed</h2>
+            <p id="feedSubtitle">Run a scan to start. One card per unique listing, multiple badges when a listing matches multiple targets.</p>
           </div>
-          <div class="result-actions">
-            <button id="compactViewBtn" class="ghost small" type="button">Compact</button>
-            <button id="exportResultsBtn" class="ghost small" type="button">Export</button>
+          <div class="feed-actions">
+            <button id="compactBtn" class="ghost small">Compact</button>
+            <button id="copyFilteredBtn" class="ghost small">Copy filtered</button>
+            <button id="exportBtn" class="ghost small">Export JSON</button>
           </div>
         </div>
 
         <div id="progressWrap" class="progress-wrap hidden">
           <div class="progress-line">
             <span id="progressLabel">Scanning</span>
-            <b id="progressNumber">0%</b>
+            <b id="progressText">0%</b>
           </div>
           <div class="progress"><div id="progressBar"></div></div>
         </div>
 
-        <div id="resultsBox" class="empty">
+        <div id="feedBox" class="empty">
           <div class="empty-icon">⌕</div>
-          <h3>No results yet</h3>
-          <p>Hit Scan now when your targets are ready.</p>
+          <h3>No accounts yet</h3>
+          <p>Start a scan when your targets are ready.</p>
         </div>
       </section>
 
       <section class="panel" id="saved">
-        <div class="results-head">
+        <div class="feed-head">
           <div>
             <h2>Saved cases</h2>
-            <p>Kept locally in this browser.</p>
+            <p>Stored locally in your browser.</p>
           </div>
-          <div class="result-actions">
-            <button id="exportSavedBtn" class="ghost small" type="button">Export</button>
-            <button id="clearSavedBtn" class="ghost danger small" type="button">Clear</button>
+          <div class="feed-actions">
+            <button id="exportSavedBtn" class="ghost small">Export saved</button>
+            <button id="clearSavedBtn" class="ghost danger small">Clear saved</button>
           </div>
         </div>
         <div id="savedBox" class="empty small-empty">
@@ -202,34 +209,42 @@
           <h3>No saved cases</h3>
         </div>
       </section>
+
+      <section class="panel" id="debug">
+        <div class="feed-head">
+          <div>
+            <h2>Debug console</h2>
+            <p>Useful when checking why images or results failed.</p>
+          </div>
+          <button id="clearLogBtn" class="ghost small">Clear log</button>
+        </div>
+        <pre id="debugLog" class="debug-log"></pre>
+      </section>
     </main>
   </div>
 
-  <div id="filterDrawer" class="drawer" aria-hidden="true">
-    <div class="drawer-backdrop" id="closeFiltersBackdrop"></div>
-    <aside class="drawer-panel">
+  <aside id="filterDrawer" class="drawer" aria-hidden="true">
+    <div id="drawerBackdrop" class="drawer-backdrop"></div>
+    <div class="drawer-panel">
       <div class="drawer-head">
         <div>
-          <span class="pill">Filter Lab</span>
-          <h2>Refine results</h2>
+          <span class="eyebrow">Filter Lab</span>
+          <h2>Refine instantly</h2>
         </div>
-        <button id="closeFiltersBtn" class="ghost small" type="button">Close</button>
+        <button id="closeFiltersBtn" class="ghost small">Close</button>
       </div>
 
-      <label class="wide">
-        <span>Search</span>
-        <input id="filterSearch" type="text" placeholder="Title, seller, country, exclusive…">
-      </label>
+      <label class="wide"><span>Search all text</span><input id="q" placeholder="title, seller, country, badge..."></label>
 
       <div class="drawer-grid">
         <label><span>Price from</span><input id="priceMin" type="number" min="0"></label>
         <label><span>Price to</span><input id="priceMax" type="number" min="0"></label>
-        <label><span>Skins from</span><input id="skinMin" type="number" min="0"></label>
-        <label><span>Skins to</span><input id="skinMax" type="number" min="0"></label>
+        <label><span>Skins from</span><input id="skinsMin" type="number" min="0"></label>
+        <label><span>Skins to</span><input id="skinsMax" type="number" min="0"></label>
         <label><span>Level from</span><input id="levelMin" type="number" min="0"></label>
         <label><span>Level to</span><input id="levelMax" type="number" min="0"></label>
-        <label><span>Seller</span><input id="sellerFilter" type="text"></label>
-        <label><span>Country</span><input id="countryFilter" type="text"></label>
+        <label><span>Seller</span><input id="sellerFilter"></label>
+        <label><span>Country</span><input id="countryFilter"></label>
       </div>
 
       <label class="wide">
@@ -246,51 +261,40 @@
       <label class="wide">
         <span>Display sort</span>
         <select id="displaySort">
-          <option value="market">Marketplace order</option>
+          <option value="market">Marketplace/global order</option>
+          <option value="newest">Newest uploaded</option>
           <option value="price_asc">Cheapest first</option>
           <option value="price_desc">Highest price</option>
           <option value="skins_desc">Most skins</option>
           <option value="level_desc">Highest level</option>
-          <option value="activity_desc">Last active</option>
+          <option value="matches_desc">Most badges</option>
         </select>
       </label>
 
-      <div class="drawer-grid">
-        <label><span>Uploaded after</span><input id="uploadedAfter" type="date"></label>
-        <label><span>Activity after</span><input id="activityAfter" type="date"></label>
-      </div>
-
-      <label class="wide">
-        <span>Must include</span>
-        <input id="includeTerms" type="text" placeholder="travis, black knight">
-      </label>
-
-      <label class="wide">
-        <span>Exclude</span>
-        <input id="excludeTerms" type="text" placeholder="fake, no email">
-      </label>
+      <label class="wide"><span>Must include</span><input id="includeTerms" placeholder="travis, black knight"></label>
+      <label class="wide"><span>Exclude</span><input id="excludeTerms" placeholder="fake, no email"></label>
 
       <div class="toggles">
+        <label><input id="onlyMultiMatch" type="checkbox"> Multiple badge matches only</label>
+        <label><input id="hasImages" type="checkbox"> Has locker images</label>
         <label><input id="hideUnknownPrice" type="checkbox"> Hide unknown price</label>
         <label><input id="hideUnknownSeller" type="checkbox"> Hide unknown seller</label>
         <label><input id="hideUnknownCountry" type="checkbox"> Hide unknown country</label>
-        <label><input id="hasImagesOnly" type="checkbox"> Has locker images</label>
-        <label><input id="onlyFullInfo" type="checkbox"> Only full info</label>
       </div>
 
       <div class="drawer-actions">
-        <button id="presetFreshBtn" class="secondary" type="button">Fresh</button>
-        <button id="presetBudgetBtn" class="secondary" type="button">Budget</button>
-        <button id="presetPremiumBtn" class="secondary" type="button">Premium</button>
-        <button id="resetFiltersBtn" class="ghost" type="button">Reset</button>
+        <button id="presetFresh" class="secondary">Fresh</button>
+        <button id="presetBudget" class="secondary">Budget</button>
+        <button id="presetPremium" class="secondary">Premium</button>
+        <button id="resetFilters" class="ghost">Reset</button>
       </div>
 
-      <div id="filterSummary" class="summary">No extra filters active</div>
-    </aside>
-  </div>
+      <div id="filterSummary" class="filter-summary">No extra filters active</div>
+    </div>
+  </aside>
 
   <div id="toastHost" class="toast-host"></div>
 
-  <script src="app.js?v=rebuild-pro-1"></script>
+  <script src="app.js?v=ultimate-1"></script>
 </body>
 </html>

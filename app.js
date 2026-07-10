@@ -1,819 +1,496 @@
-const DEFAULT_PROXY_URL="https://shiny-shape-49fd.flruming.workers.dev";
-const API_BASE="https://prod-api.lzt.market";
+const DEFAULT_WORKER="https://shiny-shape-49fd.flruming.workers.dev";
 
-const DEFAULT_TARGETS=[
-  {param:"pickaxe[]",id:"pickaxe_lockjaw_og",label:"Raider’s Revenge OG Style"},
-  {param:"skin[]",id:"030_athena_commando_m_halloween_og",label:"OG Skull Trooper / Purple Skull"},
-  {param:"skin[]",id:"029_athena_commando_f_halloween_og",label:"OG Ghoul Trooper / Pink Ghoul"},
-  {param:"skin[]",id:"028_athena_commando_f_og",label:"Renegade Raider OG Style"},
-  {param:"skin[]",id:"017_athena_commando_m_og",label:"Aerial Assault Trooper OG Style"}
+const OG_TARGETS=[
+  {param:"pickaxe[]",id:"pickaxe_lockjaw_og",label:"Raider’s Revenge OG Style",kind:"pickaxe"},
+  {param:"skin[]",id:"030_athena_commando_m_halloween_og",label:"OG Skull Trooper / Purple Skull",kind:"skin"},
+  {param:"skin[]",id:"029_athena_commando_f_halloween_og",label:"OG Ghoul Trooper / Pink Ghoul",kind:"skin"},
+  {param:"skin[]",id:"028_athena_commando_f_og",label:"Renegade Raider OG Style",kind:"skin"},
+  {param:"skin[]",id:"017_athena_commando_m_og",label:"Aerial Assault Trooper OG Style",kind:"skin"}
 ];
 
-let targets=DEFAULT_TARGETS.slice();
+let targets=[...OG_TARGETS];
 let results=[];
 let saved=[];
-let viewMode="cards";
-let imageBlobCache=new Map();
+let compact=false;
+let imageFailures=0;
+let currentController=null;
 
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c]));
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
-function toast(text){
-  const el=document.createElement("div");
-  el.className="toast";
-  el.textContent=text;
-  $("toastHost")?.appendChild(el);
-  setTimeout(()=>el.remove(),3200);
+function log(msg,data){
+  const line=`[${new Date().toLocaleTimeString()}] ${msg}${data?` ${JSON.stringify(data)}`:""}`;
+  const el=$("debugLog");
+  if(el){el.textContent=line+"\n"+el.textContent.slice(0,12000);}
+  console.log(msg,data||"");
 }
-function setStatus(text,type=""){
-  if($("sessionState"))$("sessionState").textContent=text;
-  if($("speedBadge"))$("speedBadge").textContent=type==="running"?"⚡ Scanning":type==="done"?"⚡ Complete":type==="bad"?"⚠️ Issue":"⚡ Ready";
+function toast(text){const t=document.createElement("div");t.className="toast";t.textContent=text;$("toastHost")?.appendChild(t);setTimeout(()=>t.remove(),3300);}
+function setStatus(text,kind="ready"){const el=$("statusPill");if(!el)return;el.textContent=text;el.dataset.kind=kind;}
+function localGet(k,f){try{const v=localStorage.getItem(k);return v?JSON.parse(v):f;}catch{return f;}}
+function localSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
+function numInput(id){const raw=$(id)?.value;if(raw==null||String(raw).trim()==="")return null;const n=Number(raw);return Number.isFinite(n)?n:null;}
+function clamp(v,min,max,f){const n=Number(v);return Number.isFinite(n)?Math.max(min,Math.min(max,n)):f;}
+function workerUrl(){return ($("workerUrl")?.value||DEFAULT_WORKER).replace(/\/+$/,"");}
+function apiKey(){return ($("apiKey")?.value||"").trim();}
+function cookie(){return ($("lztCookie")?.value||"").trim();}
+function headers(){
+  const h={"Accept":"application/json"};
+  if(apiKey())h["X-LZT-Key"]=apiKey();
+  if(cookie())h["X-LZT-Cookie"]=cookie();
+  return h;
 }
-function token(){return ($("apiToken")?.value||"").trim();}
-function clampNum(value,min,max,fall){
-  const n=Number(value);
-  return Number.isFinite(n)?Math.max(min,Math.min(max,n)):fall;
-}
-function safeGet(key,fall){try{const raw=localStorage.getItem(key);return raw?JSON.parse(raw):fall;}catch{return fall;}}
-function safeSet(key,val){try{localStorage.setItem(key,JSON.stringify(val));}catch{}}
-function proxiedUrl(url){return `${DEFAULT_PROXY_URL.replace(/\/+$/,"")}/proxy?url=${encodeURIComponent(url)}`;}
-async function fetchTimeout(url,options={},ms=45000){
-  const c=new AbortController();
-  const t=setTimeout(()=>c.abort(),ms);
-  try{return await fetch(url,{...options,signal:c.signal});}
-  catch(e){if(e.name==="AbortError")throw new Error("Request timed out");throw e;}
-  finally{clearTimeout(t);}
-}
-async function lztGet(path="/fortnite",params={}){
-  if(!token())throw new Error("API key required");
-  const url=new URL(API_BASE+(path.startsWith("/")?path:`/${path}`));
+async function api(path,params={},opts={}){
+  const u=new URL(workerUrl()+path);
   Object.entries(params).forEach(([k,v])=>{
     if(v===undefined||v===null||v==="")return;
-    if(Array.isArray(v))v.forEach(x=>url.searchParams.append(k,x));
-    else url.searchParams.append(k,v);
+    if(Array.isArray(v))v.forEach(x=>u.searchParams.append(k,x));
+    else u.searchParams.set(k,v);
   });
-  const res=await fetchTimeout(proxiedUrl(url.toString()),{headers:{"Accept":"application/json","X-LZT-Key":token()}});
-  if(res.status===401||res.status===403)throw new Error("API key rejected");
-  if(res.status===429){const e=new Error("Rate limited");e.isRateLimit=true;throw e;}
-  if(!res.ok)throw new Error(`${res.status} response`);
-  const text=await res.text();
-  try{return JSON.parse(text);}catch{return {raw:text};}
+  const res=await fetch(u.toString(),{headers:headers(),signal:opts.signal});
+  if(res.status===429){const e=new Error("Rate limited");e.rateLimited=true;throw e;}
+  if(!res.ok)throw new Error(`Worker/API ${res.status}`);
+  return await res.json();
 }
-async function fetchPageHtml(id){
-  if(!/^\d+$/.test(String(id)))return "";
-  try{
-    const res=await fetchTimeout(proxiedUrl(`https://lzt.market/${id}/`),{headers:{"Accept":"text/html,*/*","X-LZT-Key":token()}});
-    if(!res.ok)return "";
-    return await res.text();
-  }catch{return "";}
-}
-async function loadImage(img,url){
-  if(!img||!url)return;
-  if(imageBlobCache.has(url)){img.src=imageBlobCache.get(url);img.classList.add("loaded");return;}
-  try{
-    const res=await fetchTimeout(proxiedUrl(url),{headers:{"Accept":"image/avif,image/webp,image/apng,image/*,*/*;q=0.8","X-LZT-Key":token()}},45000);
-    if(!res.ok)throw new Error("image failed");
-    const blob=await res.blob();
-    if(!blob.type.startsWith("image/"))throw new Error("not image");
-    const obj=URL.createObjectURL(blob);
-    imageBlobCache.set(url,obj);
-    img.src=obj;img.classList.add("loaded");
-  }catch{
-    img.src=url;img.classList.add("fallback");
-  }
-}
-function hydrateImages(root=document){
-  root.querySelectorAll("img[data-img]").forEach(img=>{
-    if(img.dataset.loaded==="1")return;
-    img.dataset.loaded="1";
-    loadImage(img,img.dataset.img);
-  });
-}
-function clearImageCache(){
-  for(const v of imageBlobCache.values())try{URL.revokeObjectURL(v);}catch{}
-  imageBlobCache.clear();
-}
+function imageDirectUrl(id,type){return `https://lzt.market/${id}/image?type=${type}`;}
+function imageProxyUrl(id,type){return `${workerUrl()}/image/${encodeURIComponent(id)}/${encodeURIComponent(type)}?key=${encodeURIComponent(apiKey())}${cookie()?`&cookie=${encodeURIComponent(cookie())}`:""}`;}
+function preferredImageUrl(id,type){return $("useImageProxy")?.checked?imageProxyUrl(id,type):imageDirectUrl(id,type);}
 
-function decodeHtml(s){const x=document.createElement("textarea");x.innerHTML=String(s||"");return x.value;}
-function absoluteImg(url){
-  const raw=decodeHtml(String(url||"").replace(/\\\//g,"/").replace(/&amp;/g,"&")).trim();
-  if(raw.startsWith("//"))return `https:${raw}`;
-  if(/^https?:\/\//i.test(raw))return raw;
-  return "";
-}
-function imageOkay(url){
-  const l=String(url).toLowerCase();
-  if(!/^https?:\/\//.test(l))return false;
-  if(l.includes("avatar")||l.includes("smilie")||l.includes("emoji")||l.includes("logo"))return false;
-  return /\.(png|jpe?g|webp|gif)(\?|#|$)/i.test(l)||l.includes("locker")||l.includes("inventory")||l.includes("fortnite")||l.includes("cdn")||l.includes("image");
-}
-function extractImages(value,seen=new WeakSet(),out=[]){
-  if(value==null)return out;
-  if(typeof value==="string"){
-    const txt=decodeHtml(value);
-    const attrs=[...txt.matchAll(/(?:src|data-src|data-original|data-full|href)=["']([^"']+)["']/gi)].map(m=>m[1]);
-    const srcsets=[...txt.matchAll(/srcset=["']([^"']+)["']/gi)].flatMap(m=>m[1].split(",").map(x=>x.trim().split(/\s+/)[0]));
-    const css=[...txt.matchAll(/url\((["']?)([^"')]+)\1\)/gi)].map(m=>m[2]);
-    const raw=[...txt.matchAll(/https?:\\?\/\\?\/[^"'<>)\s]+?\.(?:png|jpe?g|webp|gif)(?:\?[^"'<>)\s]*)?/gi)].map(m=>m[0].replace(/\\\//g,"/"));
-    out.push(...attrs,...srcsets,...css,...raw);
-    return out;
-  }
-  if(typeof value!=="object")return out;
-  if(seen.has(value))return out;
-  seen.add(value);
-  if(Array.isArray(value)){value.forEach(x=>extractImages(x,seen,out));return out;}
-  Object.values(value).forEach(x=>extractImages(x,seen,out));
-  return out;
-}
-function uniqueImages(payload){
-  const seen=new Set();
-  return extractImages(payload).map(absoluteImg).filter(imageOkay).filter(u=>{
-    const key=u.split("#")[0];
-    if(seen.has(key))return false;
-    seen.add(key);
-    return true;
-  }).slice(0,18);
-}
-
-function lztLockerImageEndpoints(id){
-  if(!/^\d+$/.test(String(id)))return [];
-  return [
-    `https://lzt.market/${id}/image?type=skins`,
-    `https://lzt.market/${id}/image?type=pickaxes`
-  ];
-}
-
-function imageTypeLabel(url){
-  const l=String(url||"").toLowerCase();
-  if(l.includes("type=skins"))return "Skins";
-  if(l.includes("type=pickaxes"))return "Pickaxes";
-  return "Image";
-}
-
-function mergeImages(...lists){
-  const out=[];
-  for(const list of lists){
-    if(!Array.isArray(list))continue;
-    for(const url of list){
-      if(!url)continue;
-      const key=String(url).split("#")[0];
-      if(out.some(x=>String(x).split("#")[0]===key))continue;
-      out.push(url);
-    }
-  }
-  return out.slice(0,24);
-}
-
-function parseListingPageFields(html){
-  const text=decodeHtml(String(html||""));
-  const fields={};
-
-  const price=text.match(/id=["']price["'][^>]*data-value=["']([^"']+)["']/i);
-  if(price)fields.price=price[1];
-
-  const title=text.match(/<span[^>]*class=["'][^"']*title-account[^"']*["'][^>]*>([\s\S]*?)<\/span>/i);
-  if(title)fields.title=decodeHtml(title[1].replace(/<[^>]*>/g,"").trim());
-
-  const published=text.match(/class=["'][^"']*published_date[^"']*["'][^>]*data-value=["']([^"']+)["']/i);
-  if(published)fields.uploaded_at=Number(published[1]);
-
-  const refreshed=text.match(/class=["'][^"']*refreshed_date[^"']*["'][^>]*data-value=["']([^"']+)["']/i);
-  if(refreshed)fields.updated_at=Number(refreshed[1]);
-
-  const sellerData=text.match(/data-user=["'][^,"']+,\s*([^"']+)["']/i);
-  if(sellerData)fields.seller=decodeHtml(sellerData[1].trim());
-
-  return fields;
-}
-
-function applyPageFields(record,fields){
-  if(!fields)return record;
-  if(fields.title)record.title=fields.title;
-  if(fields.price)record.price=fields.price;
-  if(fields.seller)record.seller=fields.seller;
-  if(fields.uploaded_at)record.uploaded_at=fields.uploaded_at;
-  if(fields.updated_at)record.updated_at=fields.updated_at;
-  return record;
-}
-
-
-function canonicalParam(k){
-  const key=decodeURIComponent(String(k||"")).toLowerCase();
-  if(key.startsWith("skin"))return "skin[]";
-  if(key.startsWith("pickaxe"))return "pickaxe[]";
-  if(key.startsWith("dance")||key.startsWith("emote"))return "dance[]";
-  if(key.startsWith("glider"))return "glider[]";
-  return "";
-}
-function inferParam(id){
-  const l=String(id).toLowerCase();
-  if(l.startsWith("pickaxe"))return "pickaxe[]";
-  if(l.includes("athena_commando")||l.includes("commando"))return "skin[]";
-  return "skin[]";
-}
-function labelFor(param,id){
-  const l=String(id).toLowerCase();
-  if(param==="pickaxe[]"&&l.includes("lockjaw_og"))return "Raider’s Revenge OG Style";
-  if(l.includes("030_athena_commando_m_halloween_og"))return "OG Skull Trooper / Purple Skull";
-  if(l.includes("029_athena_commando_f_halloween_og"))return "OG Ghoul Trooper / Pink Ghoul";
-  if(l.includes("028_athena_commando_f_og"))return "Renegade Raider OG Style";
-  if(l.includes("017_athena_commando_m_og"))return "Aerial Assault Trooper OG Style";
-  return `${param} ${id}`;
-}
-function pushTarget(list,param,id){
+function canonicalParam(k){const s=decodeURIComponent(String(k||"")).toLowerCase();if(s.startsWith("skin"))return"skin[]";if(s.startsWith("pickaxe"))return"pickaxe[]";if(s.startsWith("dance")||s.startsWith("emote"))return"dance[]";if(s.startsWith("glider"))return"glider[]";return"";}
+function inferParam(id){const l=String(id).toLowerCase();if(l.startsWith("pickaxe"))return"pickaxe[]";if(l.includes("athena_commando")||l.includes("commando"))return"skin[]";if(l.startsWith("eid_"))return"dance[]";if(l.includes("glider"))return"glider[]";return"skin[]";}
+function labelFor(param,id){const l=String(id).toLowerCase();if(param==="pickaxe[]"&&l.includes("lockjaw_og"))return"Raider’s Revenge OG Style";if(l.includes("030_athena_commando_m_halloween_og"))return"OG Skull Trooper / Purple Skull";if(l.includes("029_athena_commando_f_halloween_og"))return"OG Ghoul Trooper / Pink Ghoul";if(l.includes("028_athena_commando_f_og"))return"Renegade Raider OG Style";if(l.includes("017_athena_commando_m_og"))return"Aerial Assault Trooper OG Style";return `${param} ${id}`;}
+function targetKind(param){if(param.startsWith("pickaxe"))return"pickaxe";if(param.startsWith("skin"))return"skin";if(param.startsWith("dance"))return"emote";if(param.startsWith("glider"))return"glider";return"cosmetic";}
+function addTarget(list,param,id){
   const clean=decodeURIComponent(String(id||"")).trim().replace(/^cid_/i,"").split(/[&#]/)[0];
   if(!param||!clean)return;
   const key=`${param}:${clean}`;
-  if(list.some(x=>`${x.param}:${x.id}`===key))return;
-  list.push({param,id:clean,label:labelFor(param,clean)});
+  if(list.some(t=>`${t.param}:${t.id}`===key))return;
+  list.push({param,id:clean,label:labelFor(param,clean),kind:targetKind(param)});
 }
 function parseTargets(text){
-  const out=[];
-  const raw=decodeURIComponent(String(text||""));
-  try{
-    if(raw.includes("http")){
-      const u=new URL(raw);
-      for(const [k,v] of u.searchParams.entries()){const p=canonicalParam(k);if(p)pushTarget(out,p,v);}
-    }
-  }catch{}
-  const re=/(skin|pickaxe|dance|emote|glider)(?:\[\]|%5B%5D)?\s*=\s*([a-zA-Z0-9_'’-]+)/gi;
-  let m;while((m=re.exec(raw))!==null)pushTarget(out,canonicalParam(m[1]),m[2]);
-  raw.split(/[\s,;|]+/).forEach(tok=>{
-    const t=tok.trim();
-    if(!t||t.includes("=")||t.includes("http"))return;
-    if(/^[a-zA-Z0-9_'’-]+$/.test(t)&&(t.includes("athena")||t.includes("pickaxe")||t.includes("commando")))pushTarget(out,inferParam(t),t);
+  const out=[];const raw=String(text||"");
+  try{if(raw.includes("http")){const u=new URL(raw);for(const[k,v]of u.searchParams.entries()){const p=canonicalParam(k);if(p)addTarget(out,p,v);}}}catch{}
+  const dec=decodeURIComponent(raw);
+  let m;const re=/(skin|pickaxe|dance|emote|glider)(?:\[\]|%5B%5D)?\s*=\s*([a-zA-Z0-9_'’-]+)/gi;
+  while((m=re.exec(dec))!==null)addTarget(out,canonicalParam(m[1]),m[2]);
+  dec.split(/[\s,;|]+/).forEach(tok=>{
+    const t=tok.trim();if(!t||t.includes("=")||t.includes("http"))return;
+    if(/^[a-zA-Z0-9_'’-]+$/.test(t)&&(t.includes("athena")||t.includes("pickaxe")||t.includes("commando")||t.startsWith("eid_")))addTarget(out,inferParam(t),t);
   });
   return out;
 }
 function renderTargets(){
-  if($("targetCount"))$("targetCount").textContent=String(targets.length);
-  $("targetChips").innerHTML=targets.map((t,i)=>`<span class="target-chip"><small>${esc(t.param)}</small>${esc(t.label)}<button data-remove-target="${i}" type="button">×</button></span>`).join("");
-  document.querySelectorAll("[data-remove-target]").forEach(btn=>btn.onclick=()=>{targets.splice(Number(btn.dataset.removeTarget),1);renderTargets();});
+  $("targetCount").textContent=String(targets.length);
+  $("targetList").innerHTML=targets.map((t,i)=>`<span class="target-chip"><code>${esc(t.param)}</code>${esc(t.label)}<button data-rm-target="${i}" type="button">×</button></span>`).join("");
+  document.querySelectorAll("[data-rm-target]").forEach(b=>b.onclick=()=>{targets.splice(Number(b.dataset.rmTarget),1);renderTargets();});
 }
 
-function listingId(item){
-  const raw=item?.item_id??item?.itemId??item?.account_id??item?.accountId??item?.id??"";
-  const s=String(raw);
-  return /^\d+$/.test(s)?s:"";
-}
+function idOf(item){const raw=item?.item_id??item?.itemId??item?.account_id??item?.accountId??item?.id??"";return /^\d+$/.test(String(raw))?String(raw):"";}
 function isListing(item){
   if(!item||typeof item!=="object")return false;
-  const id=listingId(item);
-  if(!id)return false;
-
-  const idText=String(item.id||item.item_id||item.itemId||"").toLowerCase();
-  if(idText.startsWith("cid_")||idText.includes("athena_commando")||idText.includes("pickaxe_"))return false;
-
-  const hasListingShape =
-    item.price!==undefined ||
-    item.price_usd!==undefined ||
-    item.cost!==undefined ||
-    item.amount!==undefined ||
-    item.seller!==undefined ||
-    item.user!==undefined ||
-    item.item_id!==undefined ||
-    item.itemId!==undefined ||
-    item.account_id!==undefined ||
-    item.accountId!==undefined;
-
-  const hasUsefulText =
-    item.title!==undefined ||
-    item.item_title!==undefined ||
-    item.name!==undefined ||
-    item.description!==undefined ||
-    item.preview!==undefined;
-
-  return hasListingShape || hasUsefulText;
+  const id=idOf(item);if(!id)return false;
+  const s=String(item.id||item.item_id||"").toLowerCase();
+  if(s.startsWith("cid_")||s.includes("athena_commando")||s.includes("pickaxe_"))return false;
+  return item.title!==undefined||item.item_title!==undefined||item.name!==undefined||item.price!==undefined||item.price_usd!==undefined||item.seller!==undefined||item.user!==undefined||item.item_id!==undefined||item.account_id!==undefined;
 }
 function extractItems(data){
-  const out=[],seen=new Set();
+  const out=[];const seen=new Set();
   function walk(v){
     if(!v)return;
     if(Array.isArray(v)){v.forEach(walk);return;}
     if(typeof v!=="object")return;
-    if(isListing(v)){
-      const id=listingId(v);
-      if(!seen.has(id)){seen.add(id);out.push(v);}
-    }
-    for(const [k,n] of Object.entries(v)){
-      if(/^\d+$/.test(String(k)) && n && typeof n==="object" && !Array.isArray(n)){
-        if(n.item_id===undefined && n.itemId===undefined && n.account_id===undefined && n.accountId===undefined && n.id===undefined){
-          n.item_id=k;
-        }
-      }
-      if(["items","data","results","list","accounts","market_items","response","values"].includes(k)||Array.isArray(n)||/^\d+$/.test(String(k)))walk(n);
+    if(isListing(v)){const id=idOf(v);if(!seen.has(id)){seen.add(id);out.push(v);}}
+    for(const[k,n]of Object.entries(v)){
+      if(/^\d+$/.test(k)&&n&&typeof n==="object"&&!Array.isArray(n)&&!idOf(n))n.item_id=k;
+      if(["items","data","results","list","accounts","market_items","response","values"].includes(k)||Array.isArray(n)||/^\d+$/.test(k))walk(n);
     }
   }
-  walk(data);
-  return out;
+  walk(data);return out;
 }
-function deepText(v,seen=new WeakSet()){ 
-  if(v==null)return "";
-  if(["string","number","boolean"].includes(typeof v))return String(v);
-  if(typeof v!=="object"||seen.has(v))return "";
-  seen.add(v);
-  if(Array.isArray(v))return v.map(x=>deepText(x,seen)).join(" ");
-  return Object.values(v).map(x=>deepText(x,seen)).join(" ");
+function deep(v,seen=new WeakSet()){
+  if(v==null)return"";if(["string","number","boolean"].includes(typeof v))return String(v);
+  if(typeof v!=="object"||seen.has(v))return"";seen.add(v);
+  if(Array.isArray(v))return v.map(x=>deep(x,seen)).join(" ");
+  return Object.values(v).map(x=>deep(x,seen)).join(" ");
 }
 function firstDeep(v,keys){
   let found="";
   function walk(x){
     if(found||!x||typeof x!=="object")return;
     if(Array.isArray(x)){x.forEach(walk);return;}
-    for(const k of keys)if(x[k]!==undefined&&x[k]!==null&&x[k]!==""){found=x[k];return;}
+    for(const k of keys){if(x[k]!==undefined&&x[k]!==null&&x[k]!==""){found=x[k];return;}}
     Object.values(x).forEach(walk);
   }
   walk(v);return found;
 }
-function numFromTitle(title,patterns){
-  for(const p of patterns){const m=String(title||"").match(p);if(m)return m[1];}
-  return "";
-}
 function known(v){return v!==undefined&&v!==null&&v!==""&&String(v).toLowerCase()!=="unknown";}
-function boolIcon(v){
-  if(typeof v==="boolean")return v?"✅":"❌";
-  const s=String(v??"").toLowerCase();
-  if(["1","true","yes","changeable","available"].includes(s))return "✅";
-  if(["0","false","no","none","not"].includes(s))return "❌";
-  if(s.includes("same"))return "Same email";
-  return "❔";
-}
-function priceText(v){
-  if(!known(v))return "Unknown";
-  const n=Number(v);
-  if(Number.isFinite(n))return `$${n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-  return String(v).startsWith("$")?String(v):`$${v}`;
-}
-function dateVal(v){
-  if(!known(v))return null;
-  if(typeof v==="number"){const d=new Date((v>1e11?v:v*1000));return Number.isNaN(d.getTime())?null:d;}
-  const m=String(v).match(/\d{4}-\d{2}-\d{2}/);
-  const d=new Date(m?`${m[0]}T00:00:00`:String(v));
-  return Number.isNaN(d.getTime())?null:d;
-}
+function titleNum(title,patterns){for(const p of patterns){const m=String(title||"").match(p);if(m)return m[1];}return"";}
+function boolIcon(v){if(typeof v==="boolean")return v?"✅":"❌";const s=String(v??"").toLowerCase();if(["1","true","yes","changeable","available"].includes(s)||s.includes("changeable email"))return"✅";if(["0","false","no","none"].includes(s)||s.includes("without email")||s.includes("no email"))return"❌";if(s.includes("same"))return"Same email";return"❔";}
+function priceText(v){if(!known(v))return"Unknown";const n=Number(String(v).replace(/[^\d.]/g,""));if(Number.isFinite(n))return `$${n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;return String(v);}
+function dateVal(v){if(!known(v))return null;if(typeof v==="number"){const d=new Date((v>1e11?v:v*1000));return isNaN(d)?null:d;}const m=String(v).match(/\d{4}-\d{2}-\d{2}/);const d=new Date(m?`${m[0]}T00:00:00`:String(v));return isNaN(d)?null:d;}
 function niceDate(v){const d=dateVal(v);return d?d.toISOString().slice(0,10):"Unknown";}
+function nField(r,k){const m=String(r[k]??"").match(/-?\d+(\.\d+)?/);return m?Number(m[0]):null;}
 
-function compact(item){
-  const id=listingId(item)||String(item.item_id??"");
-  const filters=item.matched_filters||[];
-  return {
-    scan_rank:item.scan_rank??0,
-    result_key:item.result_key||id,
-    target_key:item.target_key||"",
-    target_keys:item.target_keys||[],
-    target_label:item.target_label||"",
-    match_count:item.match_count||((item.matched_filters||[]).length||0),
-    item_id:id,
-    title:item.title||item.item_title||item.name||(id?`Listing ${id}`:"Listing"),
-    skin_count:item.skin_count??item.skins_count??item.skins??item.outfits_count??"Unknown",
-    exclusives:item.exclusives||(filters.length?filters.join(", "):"Selected cosmetic filter"),
-    email_changeable:item.email_changeable??item.change_email??item.changeable_email??"Unknown",
-    price:item.price??item.price_usd??item.cost??item.amount??"",
-    currency:item.currency||"USD",
-    seller:typeof item.seller==="string"?item.seller:(item.seller?.username||item.seller?.name||item.user?.username||item.username||item.seller_username||"Unknown"),
-    season_level:item.season_level??item.level??item.account_level??"Unknown",
-    country:item.country||item.country_code||item.origin||"Unknown",
-    last_activity:item.last_activity||item.last_activity_at||item.last_seen||item.last_login||"Unknown",
-    uploaded_at:item.uploaded_at||item.upload_date||item.pdate_upload||item.pdate||"Unknown",
-    updated_at:item.updated_at||item.refreshed_at||item.refreshed_date||"Unknown",
-    vbucks:item.vbucks??item.v_bucks??"",
-    platform:item.platform||"",
-    image_urls:Array.isArray(item.image_urls)?item.image_urls.slice(0,18):[],
-    matched_filters:filters,
-    url:id?`https://lzt.market/${id}/`:"",
-    note:item.note||""
-  };
+function parseHtmlFields(html){
+  const text=String(html||"");const f={};
+  const price=text.match(/id=["']price["'][^>]*data-value=["']([^"']+)["']/i);if(price)f.price=price[1];
+  const title=text.match(/<span[^>]*class=["'][^"']*title-account[^"']*["'][^>]*>([\s\S]*?)<\/span>/i);if(title)f.title=title[1].replace(/<[^>]+>/g,"").trim();
+  const pub=text.match(/class=["'][^"']*published_date[^"']*["'][^>]*data-value=["']([^"']+)["']/i);if(pub)f.uploaded_at=Number(pub[1]);
+  const upd=text.match(/class=["'][^"']*refreshed_date[^"']*["'][^>]*data-value=["']([^"']+)["']/i);if(upd)f.updated_at=Number(upd[1]);
+  const seller=text.match(/data-user=["'][^,"']+,\s*([^"']+)["']/i);if(seller)f.seller=seller[1].trim();
+  const country=text.match(/Country<\/[^>]+>[\s\S]{0,300}?<[^>]+>([^<]+)<\/[^>]+>/i);if(country)f.country=country[1].trim();
+  return f;
 }
-function buildRecord(summary,detail,labels,rank=0){
+function normalize(summary={},detail={},labels=[],rank=0){
   const root=detail?.item||detail?.data||detail?.account||detail?.response||detail||{};
   const merged={...summary,...root};
-  const id=listingId(summary)||listingId(merged);
+  const id=idOf(summary)||idOf(merged);
   const title=summary.title||summary.item_title||merged.title||merged.item_title||merged.name||`Listing ${id}`;
   const sellerObj=summary.seller||merged.seller||summary.user||merged.user||{};
-  let skin=summary.skin_count??summary.skins_count??summary.skins??merged.skin_count??merged.skins_count??merged.skins??firstDeep({summary,detail},["skin_count","skins_count","outfits_count","fortnite_skins_count"]);
-  if(!known(skin))skin=numFromTitle(title, [/(\d+)\s*skins?/i,/(\d+)\s*outfits?/i]);
+  let skins=summary.skin_count??summary.skins_count??summary.skins??merged.skin_count??merged.skins_count??merged.skins??firstDeep({summary,detail},["skin_count","skins_count","outfits_count","fortnite_skins_count"]);
+  if(!known(skins))skins=titleNum(title,[/(\d+)\s*skins?/i,/(\d+)\s*outfits?/i]);
   let email=summary.email_changeable??merged.email_changeable??merged.change_email??firstDeep({summary,detail},["email_changeable","change_email","changeable_email","can_change_email"]);
-  if(!known(email)){const s=title.toLowerCase();email=s.includes("same email")?"Same email":s.includes("changeable email")?"yes":"Unknown";}
+  if(!known(email)){const s=title.toLowerCase();email=s.includes("same email")?"Same email":s.includes("changeable email")?"yes":s.includes("no email")?"no":"Unknown";}
   let level=summary.season_level??summary.level??merged.season_level??merged.level??firstDeep({summary,detail},["season_level","account_level","fortnite_level","level"]);
-  if(!known(level))level=numFromTitle(title,[/level\s*[:#-]?\s*(\d+)/i,/lvl\s*[:#-]?\s*(\d+)/i]);
-  const imgs=mergeImages(lztLockerImageEndpoints(id), uniqueImages({summary,detail}));
-  return compact({
-    scan_rank:rank,
-    result_key:id,
-    target_key:"",
-    target_keys:[],
-    target_label:labels.length>1?`${labels.length} matched targets`:(labels[0]||""),
-    match_count:labels.length,
+  if(!known(level))level=titleNum(title,[/level\s*[:#-]?\s*(\d+)/i,/lvl\s*[:#-]?\s*(\d+)/i]);
+  const price=summary.price??summary.price_usd??merged.price??merged.price_usd??merged.cost??"";
+  return {
+    listingId:id,
     item_id:id,
+    canonicalKey:`lzt:${id}`,
+    scanRank:rank,
     title,
-    skin_count:known(skin)?skin:"Unknown",
-    exclusives:labels.join(", "),
-    email_changeable:known(email)?email:"Unknown",
-    price:summary.price??summary.price_usd??merged.price??merged.price_usd??merged.cost??"",
-    currency:String(summary.currency||merged.currency||"USD").toUpperCase(),
+    price,
     seller:typeof sellerObj==="string"?sellerObj:(sellerObj.username||sellerObj.name||summary.seller_username||merged.username||"Unknown"),
-    season_level:known(level)?level:"Unknown",
     country:summary.country||merged.country||summary.country_code||merged.country_code||merged.origin||"Unknown",
-    last_activity:summary.last_activity||merged.last_activity||summary.last_activity_at||merged.last_activity_at||summary.last_seen||merged.last_seen||"Unknown",
-    uploaded_at:summary.uploaded_at||summary.upload_date||summary.pdate_upload||summary.pdate||merged.uploaded_at||merged.pdate||"Unknown",
-    vbucks:summary.vbucks??merged.vbucks??numFromTitle(title, [/(\d+)\s*vb/i,/(\d+)\s*v-?bucks/i]),
+    skins:known(skins)?skins:"Unknown",
+    level:known(level)?level:"Unknown",
+    emailChangeable:known(email)?email:"Unknown",
+    lastActivity:summary.last_activity||merged.last_activity||summary.last_seen||merged.last_seen||"Unknown",
+    uploadedAt:summary.uploaded_at||summary.upload_date||summary.pdate_upload||summary.pdate||merged.uploaded_at||merged.pdate||"Unknown",
+    updatedAt:summary.updated_at||merged.updated_at||summary.refreshed_date||merged.refreshed_date||"Unknown",
+    vbucks:summary.vbucks??merged.vbucks??titleNum(title,[/(\d+)\s*vb/i,/(\d+)\s*v-?bucks/i]),
     platform:summary.platform||merged.platform||"",
-    image_urls:imgs,
-    matched_filters:labels,
-    note:detail?.detail_error?"Detail unavailable":""
-  });
+    matches:labels.map(label=>({label})),
+    matchLabels:labels,
+    matchCount:labels.length,
+    image: {
+      skinsDirect: imageDirectUrl(id,"skins"),
+      pickaxesDirect: imageDirectUrl(id,"pickaxes"),
+      skinsProxy: imageProxyUrl(id,"skins"),
+      pickaxesProxy: imageProxyUrl(id,"pickaxes")
+    },
+    raw:{summary,detail}
+  };
 }
-async function detail(id){
-  try{return await lztGet(`/${id}`);}catch(e1){try{return await lztGet(`/fortnite/${id}`);}catch(e2){return {detail_error:e1.message};}}
-}
-async function enrichFromListingPage(record){
-  if(!record.item_id)return record;
-  const html=await fetchPageHtml(record.item_id);
-  const fields=parseListingPageFields(html);
-  applyPageFields(record,fields);
-
-  const pageImages=uniqueImages({html});
-  const officialImages=$("lockerImages")?.checked ? lztLockerImageEndpoints(record.item_id) : [];
-  record.image_urls=mergeImages(officialImages,pageImages,record.image_urls||[]);
+function applyHtml(record,html){
+  const f=parseHtmlFields(html);
+  if(f.title)record.title=f.title;
+  if(f.price)record.price=f.price;
+  if(f.seller)record.seller=f.seller;
+  if(f.country)record.country=f.country;
+  if(f.uploaded_at)record.uploadedAt=f.uploaded_at;
+  if(f.updated_at)record.updatedAt=f.updated_at;
   return record;
 }
 
-function paramsFor(t,page){
-  const p={page,order_by:$("marketOrder")?.value||"pdate_to_down_upload",currency:"usd"};
-  p[t.param]=t.id;
-  const f=getFilters();
-  if(f.search)p.title=f.search;
-  if(f.priceMin!==null)p.pmin=f.priceMin;
-  if(f.priceMax!==null)p.pmax=f.priceMax;
-  return p;
+function filterState(){
+  return {
+    q:String($("q")?.value||"").toLowerCase().trim(),
+    priceMin:numInput("priceMin"),priceMax:numInput("priceMax"),
+    skinsMin:numInput("skinsMin"),skinsMax:numInput("skinsMax"),
+    levelMin:numInput("levelMin"),levelMax:numInput("levelMax"),
+    seller:String($("sellerFilter")?.value||"").toLowerCase().trim(),
+    country:String($("countryFilter")?.value||"").toLowerCase().trim(),
+    email:$("emailFilter")?.value||"",
+    sort:$("displaySort")?.value||"market",
+    include:String($("includeTerms")?.value||"").split(/[,|]+/).map(s=>s.trim().toLowerCase()).filter(Boolean),
+    exclude:String($("excludeTerms")?.value||"").split(/[,|]+/).map(s=>s.trim().toLowerCase()).filter(Boolean),
+    onlyMulti:$("onlyMultiMatch")?.checked,
+    hasImages:$("hasImages")?.checked,
+    hideUnknownPrice:$("hideUnknownPrice")?.checked,
+    hideUnknownSeller:$("hideUnknownSeller")?.checked,
+    hideUnknownCountry:$("hideUnknownCountry")?.checked
+  };
+}
+function recordText(r){return [r.title,r.seller,r.country,r.skins,r.level,r.emailChangeable,...(r.matchLabels||[])].join(" ").toLowerCase();}
+function passes(r,f=filterState()){
+  const txt=recordText(r);
+  if(f.q&&!txt.includes(f.q))return false;
+  if(f.seller&&!String(r.seller).toLowerCase().includes(f.seller))return false;
+  if(f.country&&!String(r.country).toLowerCase().includes(f.country))return false;
+  const price=nField(r,"price"),skins=nField(r,"skins"),level=nField(r,"level");
+  if(f.priceMin!==null&&(price===null||price<f.priceMin))return false;
+  if(f.priceMax!==null&&(price===null||price>f.priceMax))return false;
+  if(f.skinsMin!==null&&(skins===null||skins<f.skinsMin))return false;
+  if(f.skinsMax!==null&&(skins===null||skins>f.skinsMax))return false;
+  if(f.levelMin!==null&&(level===null||level<f.levelMin))return false;
+  if(f.levelMax!==null&&(level===null||level>f.levelMax))return false;
+  const em=boolIcon(r.emailChangeable), et=String(r.emailChangeable).toLowerCase();
+  if(f.email==="yes"&&em!=="✅")return false;
+  if(f.email==="no"&&em!=="❌")return false;
+  if(f.email==="known"&&em!=="✅"&&em!=="❌"&&!et.includes("same"))return false;
+  if(f.email==="same"&&!et.includes("same"))return false;
+  if(f.include.length&&!f.include.every(t=>txt.includes(t)))return false;
+  if(f.exclude.length&&f.exclude.some(t=>txt.includes(t)))return false;
+  if(f.onlyMulti&&r.matchCount<2)return false;
+  if(f.hasImages&&!r.image)return false;
+  if(f.hideUnknownPrice&&price===null)return false;
+  if(f.hideUnknownSeller&&String(r.seller).toLowerCase()==="unknown")return false;
+  if(f.hideUnknownCountry&&String(r.country).toLowerCase()==="unknown")return false;
+  return true;
+}
+function sortRecords(list){
+  const f=filterState();const arr=list.slice();
+  const order=$("marketOrder")?.value||"pdate_to_down_upload";
+  const uploaded=x=>dateVal(x.uploadedAt)?.getTime()??dateVal(x.updatedAt)?.getTime()??-Infinity;
+  if(f.sort==="market"||f.sort==="newest"){
+    if(order.includes("up")&&!order.includes("down"))arr.sort((a,b)=>(uploaded(a)===-Infinity?Infinity:uploaded(a))-(uploaded(b)===-Infinity?Infinity:uploaded(b))||(a.scanRank-b.scanRank));
+    else if(order==="price_to_up")arr.sort((a,b)=>(nField(a,"price")??Infinity)-(nField(b,"price")??Infinity));
+    else if(order==="price_to_down")arr.sort((a,b)=>(nField(b,"price")??-Infinity)-(nField(a,"price")??-Infinity));
+    else arr.sort((a,b)=>uploaded(b)-uploaded(a)||(a.scanRank-b.scanRank));
+  }
+  if(f.sort==="price_asc")arr.sort((a,b)=>(nField(a,"price")??Infinity)-(nField(b,"price")??Infinity));
+  if(f.sort==="price_desc")arr.sort((a,b)=>(nField(b,"price")??-Infinity)-(nField(a,"price")??-Infinity));
+  if(f.sort==="skins_desc")arr.sort((a,b)=>(nField(b,"skins")??-Infinity)-(nField(a,"skins")??-Infinity));
+  if(f.sort==="level_desc")arr.sort((a,b)=>(nField(b,"level")??-Infinity)-(nField(a,"level")??-Infinity));
+  if(f.sort==="matches_desc")arr.sort((a,b)=>(b.matchCount??0)-(a.matchCount??0));
+  return arr;
+}
+function visible(){return sortRecords(results.filter(r=>passes(r)));}
+
+function alertText(r){
+  return `New Fortnite listing on LZT Market
+
+Skin Count: ${r.skins||"Unknown"}
+Exclusives: ${(r.matchLabels||[]).join(", ")||"Selected cosmetic filter"}
+Email Changeable: ${boolIcon(r.emailChangeable)}
+
+🏷️ Title: ${r.title||"Untitled listing"}
+👤 Seller: ${r.seller||"Unknown"}
+💵 Price: ${priceText(r.price)}
+🔢 Season Level: ${r.level||"Unknown"}
+🌍 Country: ${r.country||"Unknown"}
+⏱️ Last Activity: ${niceDate(r.lastActivity)}
+🆕 Uploaded: ${niceDate(r.uploadedAt!=="Unknown"?r.uploadedAt:r.updatedAt)}
+🔗 Link: https://lzt.market/${r.listingId}/`;
+}
+function imagePanel(r,type,label){
+  const direct=imageDirectUrl(r.listingId,type);
+  const proxy=imageProxyUrl(r.listingId,type);
+  const src=preferredImageUrl(r.listingId,type);
+  const id=`img-${type}-${r.listingId}`;
+  return `<article class="locker-card">
+    <div class="locker-head"><strong>${label}</strong><div><a href="${esc(direct)}" target="_blank" rel="noopener">Direct</a><a href="${esc(proxy)}" target="_blank" rel="noopener">Proxy</a><button class="ghost small" data-retry-img="${esc(id)}" data-direct="${esc(direct)}" data-proxy="${esc(proxy)}">Retry</button></div></div>
+    <a class="locker-image" href="${esc(direct)}" target="_blank" rel="noopener">
+      <img id="${esc(id)}" src="${esc(src)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" alt="${esc(label)} for ${esc(r.listingId)}" data-direct="${esc(direct)}" data-proxy="${esc(proxy)}" onerror="window.__wrotaImageError && window.__wrotaImageError(this)">
+      <span class="image-failed">Image blocked here. Use Direct/Proxy link or Retry.</span>
+    </a>
+  </article>`;
+}
+function card(r){
+  const msg=alertText(r);
+  return `<article class="card" data-id="${esc(r.listingId)}">
+    <div class="card-top">
+      <div><span class="eyebrow">${esc(r.matchCount>1?`${r.matchCount} matches`:"Match")}</span><h3>${esc(r.title)}</h3><div class="badges">${(r.matchLabels||[]).map(x=>`<span>${esc(x)}</span>`).join("")}</div></div>
+      <div class="price">${esc(priceText(r.price))}</div>
+    </div>
+    <div class="info">
+      <div><span>Skins</span><strong>${esc(r.skins)}</strong></div>
+      <div><span>Email</span><strong>${esc(boolIcon(r.emailChangeable))}</strong></div>
+      <div><span>Level</span><strong>${esc(r.level)}</strong></div>
+      <div><span>Country</span><strong>${esc(r.country)}</strong></div>
+      <div><span>Uploaded</span><strong>${esc(niceDate(r.uploadedAt!=="Unknown"?r.uploadedAt:r.updatedAt))}</strong></div>
+      <div><span>Badges</span><strong>${esc(r.matchCount)}</strong></div>
+    </div>
+    <pre class="message">${esc(msg)}</pre>
+    <details class="locker" open><summary>Locker images</summary><div class="locker-grid">${imagePanel(r,"skins","Skins locker")}${imagePanel(r,"pickaxes","Pickaxes locker")}</div><div class="image-actions"><button class="ghost small" data-copy-text="${esc([imageDirectUrl(r.listingId,"skins"),imageDirectUrl(r.listingId,"pickaxes"),imageProxyUrl(r.listingId,"skins"),imageProxyUrl(r.listingId,"pickaxes")].join("\n"))}">Copy image links</button><span>Direct first, proxy fallback</span></div></details>
+    <div class="card-actions"><a class="ghost small" href="https://lzt.market/${esc(r.listingId)}/" target="_blank" rel="noopener">Open listing</a><button class="ghost small" data-copy-text="${esc(msg)}">Copy message</button><button class="ghost small" data-save="${esc(r.listingId)}">Save</button></div>
+    <details class="raw"><summary>Raw case data</summary><pre>${esc(JSON.stringify(r,null,2))}</pre></details>
+  </article>`;
+}
+window.__wrotaImageError=function(img){
+  const box=img.closest(".locker-image");
+  if(!img.dataset.triedProxy&&$("useImageProxy")?.checked===false){
+    img.dataset.triedProxy="1";
+    img.src=img.dataset.proxy;
+    return;
+  }
+  imageFailures++;
+  box?.classList.add("failed");
+  renderStats();
+};
+
+function renderStats(){
+  const shown=visible().length;
+  $("statShown").textContent=shown;
+  $("statUnique").textContent=results.length;
+  $("statHits").textContent=String(results.reduce((a,r)=>a+(r.matchCount||0),0));
+  $("statImageFail").textContent=imageFailures;
+  $("statSaved").textContent=saved.length;
+  $("filterSummary").textContent=summary();
+}
+function renderFeed(){
+  const list=visible();renderStats();
+  const box=$("feedBox");
+  if(!list.length){
+    box.className="empty";
+    box.innerHTML=results.length?`<div class="empty-icon">⌕</div><h3>No visible matches</h3><p>Relax filters in Filter Lab.</p>`:`<div class="empty-icon">⌕</div><h3>No accounts yet</h3><p>Start a scan when your targets are ready.</p>`;
+    return;
+  }
+  box.className=compact?"cards compact":"cards";
+  box.innerHTML=list.map(card).join("");
+  wireDynamic(box);
+}
+function renderSaved(){
+  const box=$("savedBox");$("statSaved").textContent=saved.length;
+  if(!saved.length){box.className="empty small-empty";box.innerHTML=`<div class="empty-icon">□</div><h3>No saved cases</h3>`;return;}
+  box.className="cards compact";box.innerHTML=saved.map(card).join("");wireDynamic(box);
+}
+function wireDynamic(root=document){
+  root.querySelectorAll("[data-copy-text]").forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.copyText||"");toast("Copied");}catch{toast("Copy failed");}});
+  root.querySelectorAll("[data-save]").forEach(b=>b.onclick=()=>{const r=results.find(x=>x.listingId===b.dataset.save);if(!r)return;if(!saved.some(x=>x.listingId===r.listingId))saved.unshift(r);saved=saved.slice(0,200);localSet("wrota.ultimate.saved",saved);renderSaved();renderStats();toast("Saved");});
+  root.querySelectorAll("[data-retry-img]").forEach(b=>b.onclick=()=>{const img=$(b.dataset.retryImg);if(!img)return;img.closest(".locker-image")?.classList.remove("failed");const useProxy=img.src.includes("/image/")?false:true;const next=useProxy?b.dataset.proxy:b.dataset.direct;const sep=next.includes("?")?"&":"?";img.src=`${next}${sep}_reload=${Date.now()}`;});
+}
+function summary(){
+  const f=filterState();const parts=[];
+  if(f.q)parts.push(`search: ${f.q}`);
+  if(f.priceMin!==null||f.priceMax!==null)parts.push(`price ${f.priceMin??0}–${f.priceMax??"∞"}`);
+  if(f.seller)parts.push(`seller: ${f.seller}`);
+  if(f.country)parts.push(`country: ${f.country}`);
+  if(f.email)parts.push(`email: ${f.email}`);
+  if(f.onlyMulti)parts.push("multi-match only");
+  if(f.hasImages)parts.push("has images");
+  return parts.length?parts.join(" · "):"No extra filters active";
+}
+function progress(done,total,label){
+  $("progressWrap").classList.remove("hidden");
+  const pct=total?Math.round(done/total*100):0;
+  $("progressLabel").textContent=label;
+  $("progressText").textContent=`${pct}%`;
+  $("progressBar").style.width=`${pct}%`;
 }
 async function pool(tasks,limit,onDone){
   const out=[];let i=0,done=0;
   async function worker(){
     while(i<tasks.length){
       const idx=i++;
-      try{out[idx]=await tasks[idx]();}catch(e){out[idx]={error:e};}
+      try{out[idx]=await tasks[idx]();}
+      catch(e){out[idx]={error:e};}
       done++;onDone?.(done,tasks.length,idx,out[idx]);
     }
   }
   await Promise.all(Array.from({length:Math.max(1,Math.min(limit,tasks.length))},worker));
   return out;
 }
-
-function textOf(r){return [r.title,r.seller,r.country,r.exclusives,r.email_changeable,r.price,r.skin_count,r.season_level].join(" ").toLowerCase();}
-function nField(r,k){const m=String(r[k]??"").match(/-?\d+(\.\d+)?/);return m?Number(m[0]):null;}
-function terms(v){return String(v||"").split(/[,|]+/).map(x=>x.trim().toLowerCase()).filter(Boolean);}
-function getFilters(){
-  return {
-    search:String($("filterSearch")?.value||"").toLowerCase().trim(),
-    priceMin:numOrNull("priceMin"),priceMax:numOrNull("priceMax"),
-    skinMin:numOrNull("skinMin"),skinMax:numOrNull("skinMax"),
-    levelMin:numOrNull("levelMin"),levelMax:numOrNull("levelMax"),
-    seller:String($("sellerFilter")?.value||"").toLowerCase().trim(),
-    country:String($("countryFilter")?.value||"").toLowerCase().trim(),
-    email:$("emailFilter")?.value||"",
-    sort:$("displaySort")?.value||"market",
-    uploadedAfter:dateInput("uploadedAfter"),activityAfter:dateInput("activityAfter"),
-    include:terms($("includeTerms")?.value),exclude:terms($("excludeTerms")?.value),
-    hideUnknownPrice:$("hideUnknownPrice")?.checked,hideUnknownSeller:$("hideUnknownSeller")?.checked,hideUnknownCountry:$("hideUnknownCountry")?.checked,
-    hasImagesOnly:$("hasImagesOnly")?.checked,onlyFullInfo:$("onlyFullInfo")?.checked
-  };
+function paramsFor(target,page){
+  const params={page,order_by:$("marketOrder").value,currency:"usd"};
+  params[target.param]=target.id;
+  const f=filterState();
+  if(f.q)params.title=f.q;
+  if(f.priceMin!==null)params.pmin=f.priceMin;
+  if(f.priceMax!==null)params.pmax=f.priceMax;
+  return params;
 }
-function numOrNull(id){
-  const raw=$(id)?.value;
-  if(raw===undefined || raw===null || String(raw).trim()==="")return null;
-  const n=Number(raw);
-  return Number.isFinite(n)?n:null;
+async function enrich(record,signal){
+  if(!$("enrichPages").checked)return record;
+  try{
+    const res=await api(`/listing/${encodeURIComponent(record.listingId)}`,{}, {signal});
+    if(res?.html)applyHtml(record,res.html);
+    if(res?.data)record.raw.detail=res.data;
+  }catch(e){record.enrichError=e.message;log("enrich failed",{id:record.listingId,error:e.message});}
+  return record;
 }
-function dateInput(id){const v=$(id)?.value;if(!v)return null;const d=new Date(`${v}T00:00:00`);return Number.isNaN(d.getTime())?null:d;}
-function passes(r,f=getFilters()){
-  const txt=textOf(r);
-  if(f.search&&!txt.includes(f.search))return false;
-  if(f.seller&&!String(r.seller).toLowerCase().includes(f.seller))return false;
-  if(f.country&&!String(r.country).toLowerCase().includes(f.country))return false;
-  const price=nField(r,"price"),skins=nField(r,"skin_count"),level=nField(r,"season_level");
-  if(f.priceMin!==null&&(price===null||price<f.priceMin))return false;
-  if(f.priceMax!==null&&(price===null||price>f.priceMax))return false;
-  if(f.skinMin!==null&&(skins===null||skins<f.skinMin))return false;
-  if(f.skinMax!==null&&(skins===null||skins>f.skinMax))return false;
-  if(f.levelMin!==null&&(level===null||level<f.levelMin))return false;
-  if(f.levelMax!==null&&(level===null||level>f.levelMax))return false;
-  const em=boolIcon(r.email_changeable), et=String(r.email_changeable).toLowerCase();
-  if(f.email==="yes"&&em!=="✅")return false;
-  if(f.email==="no"&&em!=="❌")return false;
-  if(f.email==="known"&&em!=="✅"&&em!=="❌"&&!et.includes("same"))return false;
-  if(f.email==="same"&&!et.includes("same"))return false;
-  if(f.uploadedAfter){const d=dateVal(r.uploaded_at);if(!d||d<f.uploadedAfter)return false;}
-  if(f.activityAfter){const d=dateVal(r.last_activity);if(!d||d<f.activityAfter)return false;}
-  if(f.include.length&&!f.include.every(t=>txt.includes(t)))return false;
-  if(f.exclude.length&&f.exclude.some(t=>txt.includes(t)))return false;
-  if(f.hideUnknownPrice&&price===null)return false;
-  if(f.hideUnknownSeller&&String(r.seller).toLowerCase()==="unknown")return false;
-  if(f.hideUnknownCountry&&String(r.country).toLowerCase()==="unknown")return false;
-  if(f.hasImagesOnly&&!(r.image_urls||[]).length)return false;
-  if(f.onlyFullInfo&&["skin_count","seller","price","country","last_activity"].some(k=>!known(r[k])))return false;
-  return true;
-}
-function visible(){
-  const f=getFilters();const arr=results.filter(r=>passes(r,f)).slice();
-  const num=(r,k)=>nField(r,k)??-Infinity;
-  if(f.sort==="market"){
-    const order=$("marketOrder")?.value||"pdate_to_down_upload";
-    const uploadedMs=x=>dateVal(x.uploaded_at)?.getTime() ?? dateVal(x.updated_at)?.getTime() ?? -Infinity;
-    if(order==="pdate_to_down_upload"||order==="pdate_to_down"){
-      arr.sort((a,b)=>uploadedMs(b)-uploadedMs(a)||((a.scan_rank??0)-(b.scan_rank??0)));
-    }else if(order==="pdate_to_up_upload"||order==="pdate_to_up"){
-      arr.sort((a,b)=>(uploadedMs(a)===-Infinity?Infinity:uploadedMs(a))-(uploadedMs(b)===-Infinity?Infinity:uploadedMs(b))||((a.scan_rank??0)-(b.scan_rank??0)));
-    }else if(order==="price_to_up"){
-      arr.sort((a,b)=>(nField(a,"price")??Infinity)-(nField(b,"price")??Infinity));
-    }else if(order==="price_to_down"){
-      arr.sort((a,b)=>(nField(b,"price")??-Infinity)-(nField(a,"price")??-Infinity));
-    }else{
-      arr.sort((a,b)=>(a.scan_rank??0)-(b.scan_rank??0));
-    }
-  }
-  if(f.sort==="price_asc")arr.sort((a,b)=>(nField(a,"price")??Infinity)-(nField(b,"price")??Infinity));
-  if(f.sort==="price_desc")arr.sort((a,b)=>num(b,"price")-num(a,"price"));
-  if(f.sort==="skins_desc")arr.sort((a,b)=>num(b,"skin_count")-num(a,"skin_count"));
-  if(f.sort==="level_desc")arr.sort((a,b)=>num(b,"season_level")-num(a,"season_level"));
-  if(f.sort==="activity_desc")arr.sort((a,b)=>(dateVal(b.last_activity)?.getTime()??-Infinity)-(dateVal(a.last_activity)?.getTime()??-Infinity));
-  return arr;
-}
-
-function alertText(r){
-  const extra=[
-    r.vbucks?`💎 V-Bucks: ${r.vbucks}`:"",
-    (r.uploaded_at&&r.uploaded_at!=="Unknown")?`🆕 Uploaded: ${niceDate(r.uploaded_at)}`:(r.updated_at&&r.updated_at!=="Unknown"?`🆕 Uploaded: ${niceDate(r.updated_at)}`:"")
-  ].filter(Boolean).join("\n");
-  return `New Fortnite listing on LZT Market\n\nSkin Count: ${r.skin_count||"Unknown"}\nExclusives: ${r.exclusives||"Selected cosmetic filter"}\nEmail Changeable: ${boolIcon(r.email_changeable)}\n\n🏷️ Title: ${r.title||"Untitled listing"}\n👤 Seller: ${r.seller||"Unknown"}\n💵 Price: ${priceText(r.price)}\n🔢 Season Level: ${r.season_level||"Unknown"}\n🌍 Country: ${r.country||"Unknown"}\n⏱️ Last Activity: ${niceDate(r.last_activity)}${extra?"\n"+extra:""}\n🔗 Link: https://lzt.market/${r.item_id}/`;
-}
-
-
-function lztEmbedUrl(id,type){
-  if(!/^\d+$/.test(String(id)))return "";
-  return `https://lzt.market/${id}/image?type=${type}`;
-}
-
-function renderDirectLockerImages(r){
-  if(!$("lockerImages")?.checked || !r.item_id){
-    return `<div class="no-images">Locker images are disabled.</div>`;
-  }
-
-  const skins=lztEmbedUrl(r.item_id,"skins");
-  const pickaxes=lztEmbedUrl(r.item_id,"pickaxes");
-
-  return `<div class="direct-locker-grid">
-    <article class="direct-locker-card">
-      <div class="direct-locker-head">
-        <strong>Skins locker</strong>
-        <div>
-          <a href="${esc(skins)}" target="_blank" rel="noopener">Open</a>
-          <button class="ghost small" data-reload-img="skins-${esc(r.item_id)}" type="button">Reload</button>
-        </div>
-      </div>
-      <a class="direct-locker-image" href="${esc(skins)}" target="_blank" rel="noopener">
-        <img id="skins-${esc(r.item_id)}" src="${esc(skins)}" loading="lazy" referrerpolicy="no-referrer" alt="LZT skins locker image for ${esc(r.item_id)}" onerror="this.closest('.direct-locker-image').classList.add('failed')">
-        <span class="image-failed">Image blocked here — click Open</span>
-      </a>
-    </article>
-
-    <article class="direct-locker-card">
-      <div class="direct-locker-head">
-        <strong>Pickaxes locker</strong>
-        <div>
-          <a href="${esc(pickaxes)}" target="_blank" rel="noopener">Open</a>
-          <button class="ghost small" data-reload-img="pickaxes-${esc(r.item_id)}" type="button">Reload</button>
-        </div>
-      </div>
-      <a class="direct-locker-image" href="${esc(pickaxes)}" target="_blank" rel="noopener">
-        <img id="pickaxes-${esc(r.item_id)}" src="${esc(pickaxes)}" loading="lazy" referrerpolicy="no-referrer" alt="LZT pickaxes locker image for ${esc(r.item_id)}" onerror="this.closest('.direct-locker-image').classList.add('failed')">
-        <span class="image-failed">Image blocked here — click Open</span>
-      </a>
-    </article>
-  </div>
-
-  <div class="image-actions">
-    <button class="ghost small" data-copy-text="${esc([skins,pickaxes].join("\\n"))}" type="button">Copy image links</button>
-    <span>Direct LZT image embeds</span>
-  </div>`;
-}
-
-function card(r){
-  const msg=alertText(r);
-  return `<article class="card">
-    <div class="card-top">
-      <div>
-        <span class="pill">${esc((r.match_count||0)>1?`${r.match_count} matched targets`:(r.target_label||"Matched target"))}</span>
-        <h3>${esc(r.title)}</h3>
-        <div class="match-badges">${(r.matched_filters||[]).map(label=>`<span>${esc(label)}</span>`).join("")}</div>
-      </div>
-      <div class="price">${esc(priceText(r.price))}</div>
-    </div>
-    <div class="info">
-      <div><span>Skins</span><strong>${esc(r.skin_count)}</strong></div>
-      <div><span>Email</span><strong>${esc(boolIcon(r.email_changeable))}</strong></div>
-      <div><span>Level</span><strong>${esc(r.season_level)}</strong></div>
-      <div><span>Country</span><strong>${esc(r.country)}</strong></div>
-      <div><span>Uploaded</span><strong>${esc(niceDate(r.uploaded_at!=="Unknown"?r.uploaded_at:r.updated_at))}</strong></div>
-    </div>
-    <pre class="message">${esc(msg)}</pre>
-    <details class="gallery-wrap" open>
-      <summary>Locker images</summary>
-      ${renderDirectLockerImages(r)}
-    </details>
-    <div class="card-actions">
-      <a class="ghost small" href="https://lzt.market/${esc(r.item_id)}/" target="_blank" rel="noopener">Open source</a>
-      <button class="ghost small" data-copy-text="${esc(msg)}" type="button">Copy message</button>
-      <button class="ghost small" data-save="${esc(r.item_id)}" type="button">Save</button>
-    </div>
-    <details class="raw"><summary>Case data</summary><pre>${esc(JSON.stringify(r,null,2))}</pre></details>
-  </article>`;
-}
-function renderResults(){
-  const list=visible();
-  $("statShown").textContent=list.length;
-  $("statFound").textContent=results.length;
-  $("statSaved").textContent=saved.length;
-  $("statLast").textContent=safeGet("wrota.rebuilt.last","—");
-  $("filterSummary").textContent=summaryText();
-
-  const box=$("resultsBox");
-  if(!list.length){
-    box.className="empty";
-    box.innerHTML=results.length?`<div class="empty-icon">⌕</div><h3>No matches with current filters</h3><p>Open Filter Lab and relax your filters.</p>`:`<div class="empty-icon">⌕</div><h3>No results yet</h3><p>Hit Scan now when your targets are ready.</p>`;
-    return;
-  }
-  box.className=viewMode==="compact"?"cards compact":"cards";
-  box.innerHTML=list.map(card).join("");
-  wireButtons(box);
-}
-function renderSaved(){
-  const box=$("savedBox");
-  $("statSaved").textContent=saved.length;
-  if(!saved.length){box.className="empty small-empty";box.innerHTML=`<div class="empty-icon">□</div><h3>No saved cases</h3>`;return;}
-  box.className="cards compact";
-  box.innerHTML=saved.map(card).join("");
-  wireButtons(box);
-}
-function wireButtons(root=document){
-  root.querySelectorAll("[data-copy-text]").forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.copyText||"");toast("Copied");}catch{toast("Copy failed");}});
-  root.querySelectorAll("[data-save]").forEach(b=>b.onclick=()=>{const r=results.find(x=>x.item_id===b.dataset.save);if(!r)return;if(!saved.some(x=>x.item_id===r.item_id))saved.unshift(r);saved=saved.slice(0,100);safeSet("wrota.rebuilt.saved",saved);renderSaved();renderResults();toast("Saved");});
-  root.querySelectorAll("[data-reload-img]").forEach(b=>b.onclick=()=>{
-    const img=document.getElementById(b.dataset.reloadImg);
-    if(!img)return;
-    const base=img.src.split("&_reload=")[0].split("?_reload=")[0];
-    const sep=base.includes("?")?"&":"?";
-    img.closest(".direct-locker-image")?.classList.remove("failed");
-    img.src=`${base}${sep}_reload=${Date.now()}`;
-  });
-}
-function summaryText(){
-  const f=getFilters();const p=[];
-  if(f.search)p.push(`search: ${f.search}`);
-  if(f.priceMin!==null||f.priceMax!==null)p.push(`price ${f.priceMin??0}–${f.priceMax??"∞"}`);
-  if(f.seller)p.push(`seller: ${f.seller}`);
-  if(f.country)p.push(`country: ${f.country}`);
-  if(f.email)p.push(`email: ${f.email}`);
-  if(f.hasImagesOnly)p.push("has images");
-  if(f.onlyFullInfo)p.push("full info");
-  return p.length?p.join(" · "):"No extra filters active";
-}
-function progress(done,total,label){
-  $("progressWrap").classList.remove("hidden");
-  $("progressLabel").textContent=label;
-  const pct=total?Math.round(done/total*100):0;
-  $("progressNumber").textContent=`${pct}%`;
-  $("progressBar").style.width=`${pct}%`;
-}
-
 async function scan(){
-  if(!targets.length){toast("Add targets first");return;}
-  clearImageCache();
-  results=[];renderResults();
-  const pages=clampNum($("pagesPerTarget").value,1,25,3);
-  const parallel=clampNum($("parallelRequests").value,1,10,5);
-  const delay=clampNum($("scanDelay").value,0,15000,250);
+  if(!targets.length){toast("Add at least one target");return;}
+  currentController?.abort();
+  currentController=new AbortController();
+  imageFailures=0;results=[];renderFeed();setStatus("Scanning","run");$("scanBtn").disabled=true;
+  const pages=clamp($("pagesPerTarget").value,1,50,5);
+  const parallel=clamp($("parallel").value,1,12,4);
+  const delay=clamp($("delay").value,0,30000,300);
   const tasks=[];
-  // Interleaved global scan: page 1 for every target, then page 2 for every target, etc.
-  // This stops the first target from dominating the feed before other targets are scanned.
   for(let page=1;page<=pages;page++){
-    targets.forEach(t=>{
+    for(const target of targets){
       tasks.push(async()=>{
         if(delay)await sleep(delay);
-        const data=await lztGet("/fortnite",paramsFor(t,page));
-        return {target:t,page,items:extractItems(data)};
+        const data=await api("/search",paramsFor(target,page),{signal:currentController.signal});
+        return {target,page,items:extractItems(data)};
       });
-    });
+    }
   }
+
   const found=new Map();
-  $("scanBtn").disabled=true;setStatus("Scanning","running");$("resultSubtitle").textContent="Scanning all targets together. Results are merged into one global feed.";
-
+  const upsertPack=(item,target)=>{
+    const id=idOf(item);if(!id)return;
+    const p=found.get(id)||{summary:{},labels:[],rank:found.size};
+    p.summary={...p.summary,...item};
+    p.labels=[...new Set([...p.labels,target.label])];
+    found.set(id,p);
+  };
   try{
+    $("feedSubtitle").textContent="Scanning interleaved targets into one mixed global feed.";
     await pool(tasks,parallel,(done,total,idx,res)=>{
-      if(res?.error){if(res.error.isRateLimit)throw res.error;return;}
-      const label=res.target.label;
-      res.items.forEach(item=>{
-        const id=listingId(item);if(!id)return;
-        const targetKey=`${res.target.param}:${res.target.id}`;
-
-        // Global mixed feed: one account/listing only.
-        // If it matches multiple filters, keep all filters as badges on the same card.
-        const pack=found.get(id)||{summary:{},labels:[],targetKeys:[],rank:found.size,resultKey:id,targetLabel:""};
-        pack.summary={...pack.summary,...item};
-        pack.labels=[...new Set([...pack.labels,label])];
-        pack.targetKeys=[...new Set([...(pack.targetKeys||[]),targetKey])];
-        pack.targetLabel=pack.labels.length>1?`${pack.labels.length} matched targets`:pack.labels[0];
-        found.set(id,pack);
-      });
-      results=[...found.values()].map(p=>{
-        const r=buildRecord(p.summary,{},p.labels,p.rank);
-        r.result_key=p.resultKey || r.item_id;
-        r.target_keys=p.targetKeys || [];
-        r.target_label=p.targetLabel || (p.labels.length>1?`${p.labels.length} matched targets`:p.labels[0]);
-        r.match_count=p.labels.length;
-        return r;
-      });
-      renderResults();
-      progress(done,total,`Page scan ${done}/${total}`);
+      if(res?.error){log("page error",{error:res.error.message});return;}
+      res.items.forEach(item=>upsertPack(item,res.target));
+      results=[...found.values()].map(p=>normalize(p.summary,{},p.labels,p.rank));
+      renderFeed();
+      progress(done,total,`Search pages ${done}/${total}`);
     });
 
-    if($("enrichDetails").checked&&found.size){
-      const entries=[...found.entries()];
-      $("resultSubtitle").textContent="Enriching details and locker images.";
-      await pool(entries.map(([id,p])=>async()=>{
-        const d=await detail(id);
-        let rec=buildRecord(p.summary,d,p.labels,p.rank);
-        rec.result_key=p.resultKey || rec.item_id;
-        rec.target_keys=p.targetKeys || [];
-        rec.target_label=p.targetLabel || (p.labels.length>1?`${p.labels.length} matched targets`:p.labels[0]);
-        rec.match_count=p.labels.length;
-        rec=await enrichFromListingPage(rec);
-        return rec;
-      }),Math.min(parallel,6),(done,total,idx,res)=>{
-        if(res&&!res.error){
-          const pos=results.findIndex(x=>x.item_id===res.item_id);
-          if(pos>=0)results[pos]=res;else results.push(res);
-          renderResults();
-        }
-        progress(done,total,`Enrichment ${done}/${total}`);
+    if(results.length&&$("enrichPages").checked){
+      $("feedSubtitle").textContent="Enriching visible listings from detail pages.";
+      const enrichTasks=results.map(r=>async()=>await enrich(r,currentController.signal));
+      await pool(enrichTasks,Math.min(parallel,5),(done,total,idx,res)=>{
+        if(res&&!res.error){const pos=results.findIndex(x=>x.listingId===res.listingId);if(pos>=0)results[pos]=res;}
+        renderFeed();progress(done,total,`Enrichment ${done}/${total}`);
       });
     }
 
-    saved=safeGet("wrota.rebuilt.saved",[]);
-    const stamp=new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
-    safeSet("wrota.rebuilt.last",stamp);
-    $("resultSubtitle").textContent=results.length?"Scan complete.":"No numeric listings found.";
-    setStatus("Done","done");
+    results=sortRecords(results);
+    $("feedSubtitle").textContent=results.length?`Complete: ${results.length} unique listings, ${results.reduce((a,r)=>a+r.matchCount,0)} target hits.`:"No numeric listings found.";
+    setStatus("Complete","done");
+    log("scan complete",{unique:results.length,hits:results.reduce((a,r)=>a+r.matchCount,0)});
   }catch(e){
-    $("resultSubtitle").textContent=e.isRateLimit?"Rate limited. Lower parallel requests or raise delay.":e.message;
-    setStatus("Issue","bad");
-    toast(e.isRateLimit?"Rate limited":"Scan failed");
+    if(e.name==="AbortError"){toast("Scan cancelled");log("scan cancelled");}
+    else{toast(e.rateLimited?"Rate limited":"Scan failed");$("feedSubtitle").textContent=e.message;setStatus("Issue","bad");log("scan failed",{error:e.message});}
   }finally{
-    $("scanBtn").disabled=false;
-    $("progressWrap").classList.add("hidden");
-    renderResults();renderSaved();
+    $("scanBtn").disabled=false;$("progressWrap").classList.add("hidden");renderFeed();
   }
 }
-
-function exportJson(name,data){
-  const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);
+async function testConnection(){
+  try{setStatus("Testing","run");await api("/health");await api("/search",{page:1,order_by:"pdate_to_down_upload",currency:"usd"});setStatus("Connected","done");toast("Connection works");}
+  catch(e){setStatus("Issue","bad");toast(e.message);log("connection failed",{error:e.message});}
 }
-async function testKey(e){
-  e?.preventDefault();
-  try{setStatus("Testing","running");await lztGet("/fortnite",{page:1,order_by:"pdate_to_down_upload",currency:"usd"});setStatus("Connected","done");toast("Key accepted");}
-  catch(err){setStatus("Key issue","bad");toast(err.message);}
-}
+function exportJson(name,data){const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);}
+async function copyFiltered(){const txt=visible().map(alertText).join("\n\n---\n\n");try{await navigator.clipboard.writeText(txt);toast("Filtered messages copied");}catch{toast("Copy failed");}}
+function resetFilters(){["q","priceMin","priceMax","skinsMin","skinsMax","levelMin","levelMax","sellerFilter","countryFilter","includeTerms","excludeTerms"].forEach(id=>$(id).value="");$("emailFilter").value="";$("displaySort").value="market";["onlyMultiMatch","hasImages","hideUnknownPrice","hideUnknownSeller","hideUnknownCountry"].forEach(id=>$(id).checked=false);renderFeed();}
 function bind(){
-  $("accessForm").addEventListener("submit",testKey);
-  $("toggleKey").onclick=()=>{const i=$("apiToken");const show=i.type==="password";i.type=show?"text":"password";$("toggleKey").textContent=show?"Hide":"Show";};
-  $("clearKeyBtn").onclick=()=>{$("apiToken").value="";setStatus("Ready");};
-  $("scanBtn").onclick=scan;
-  $("addTargetBtn").onclick=()=>{parseTargets($("targetInput").value).forEach(t=>pushTarget(targets,t.param,t.id));$("targetInput").value="";renderTargets();};
-  $("parseBulkBtn").onclick=()=>{parseTargets($("bulkTargets").value).forEach(t=>pushTarget(targets,t.param,t.id));$("bulkTargets").value="";renderTargets();};
-  $("ogPresetBtn").onclick=()=>{targets=DEFAULT_TARGETS.slice();renderTargets();toast("OG set loaded");};
-  $("resetTargetsBtn").onclick=()=>{targets=[];renderTargets();};
-  document.querySelectorAll("[data-order]").forEach(b=>b.onclick=()=>{$("marketOrder").value=b.dataset.order;document.querySelectorAll("[data-order]").forEach(x=>x.classList.toggle("active",x===b));toast("Order set. Run scan to apply.");});
-  $("openFiltersBtn").onclick=()=>$("filterDrawer").classList.add("open");
-  $("closeFiltersBtn").onclick=()=>$("filterDrawer").classList.remove("open");
-  $("closeFiltersBackdrop").onclick=()=>$("filterDrawer").classList.remove("open");
-  ["filterSearch","priceMin","priceMax","skinMin","skinMax","levelMin","levelMax","sellerFilter","countryFilter","emailFilter","displaySort","uploadedAfter","activityAfter","includeTerms","excludeTerms","hideUnknownPrice","hideUnknownSeller","hideUnknownCountry","hasImagesOnly","onlyFullInfo"].forEach(id=>$(id)?.addEventListener("input",renderResults));
-  ["emailFilter","displaySort","hideUnknownPrice","hideUnknownSeller","hideUnknownCountry","hasImagesOnly","onlyFullInfo"].forEach(id=>$(id)?.addEventListener("change",renderResults));
-  $("resetFiltersBtn").onclick=()=>{["filterSearch","priceMin","priceMax","skinMin","skinMax","levelMin","levelMax","sellerFilter","countryFilter","uploadedAfter","activityAfter","includeTerms","excludeTerms"].forEach(id=>$(id).value="");$("emailFilter").value="";$("displaySort").value="market";["hideUnknownPrice","hideUnknownSeller","hideUnknownCountry","hasImagesOnly","onlyFullInfo"].forEach(id=>$(id).checked=false);renderResults();};
-  $("presetFreshBtn").onclick=()=>{$("marketOrder").value="pdate_to_down_upload";$("displaySort").value="market";toast("Fresh preset set. Run scan.");};
-  $("presetBudgetBtn").onclick=()=>{$("marketOrder").value="price_to_up";$("displaySort").value="price_asc";$("priceMax").value=250;renderResults();toast("Budget preset set.");};
-  $("presetPremiumBtn").onclick=()=>{$("marketOrder").value="price_to_down";$("displaySort").value="price_desc";$("priceMin").value=250;renderResults();toast("Premium preset set.");};
-  $("compactViewBtn").onclick=()=>{viewMode=viewMode==="cards"?"compact":"cards";$("compactViewBtn").textContent=viewMode==="cards"?"Compact":"Cards";renderResults();};
-  $("exportResultsBtn").onclick=()=>exportJson("wrota-results.json",results);
-  $("exportSavedBtn").onclick=()=>exportJson("wrota-saved.json",saved);
-  $("clearSavedBtn").onclick=()=>{saved=[];safeSet("wrota.rebuilt.saved",saved);renderSaved();renderResults();toast("Saved cleared");};
+  $("workerUrl").value=localGet("wrota.ultimate.worker",DEFAULT_WORKER);
+  $("apiKey").value=localGet("wrota.ultimate.key","");
+  $("lztCookie").value=localGet("wrota.ultimate.cookie","");
+  saved=localGet("wrota.ultimate.saved",[]);
+  $("toggleSecretsBtn").onclick=()=>{const show=$("apiKey").type==="password";["apiKey","lztCookie"].forEach(id=>$(id).type=show?"text":"password");$("toggleSecretsBtn").textContent=show?"Hide":"Show";};
+  $("saveConfigBtn").onclick=()=>{localSet("wrota.ultimate.worker",$("workerUrl").value);localSet("wrota.ultimate.key",$("apiKey").value);localSet("wrota.ultimate.cookie",$("lztCookie").value);toast("Saved locally");};
+  $("clearConfigBtn").onclick=()=>{["workerUrl","apiKey","lztCookie"].forEach(id=>$(id).value=id==="workerUrl"?DEFAULT_WORKER:"");toast("Cleared");};
+  $("testBtn").onclick=testConnection;$("scanBtn").onclick=scan;
+  $("loadOgBtn").onclick=()=>{targets=[...OG_TARGETS];renderTargets();toast("OG set loaded");};
+  $("clearTargetsBtn").onclick=()=>{targets=[];renderTargets();};
+  $("addTargetBtn").onclick=()=>{parseTargets($("targetInput").value).forEach(t=>addTarget(targets,t.param,t.id));$("targetInput").value="";renderTargets();};
+  $("parseBulkBtn").onclick=()=>{parseTargets($("bulkTargets").value).forEach(t=>addTarget(targets,t.param,t.id));$("bulkTargets").value="";renderTargets();};
+  $("openFiltersBtn").onclick=()=>$("filterDrawer").classList.add("open");$("closeFiltersBtn").onclick=()=>$("filterDrawer").classList.remove("open");$("drawerBackdrop").onclick=()=>$("filterDrawer").classList.remove("open");
+  ["q","priceMin","priceMax","skinsMin","skinsMax","levelMin","levelMax","sellerFilter","countryFilter","emailFilter","displaySort","includeTerms","excludeTerms","onlyMultiMatch","hasImages","hideUnknownPrice","hideUnknownSeller","hideUnknownCountry"].forEach(id=>$(id)?.addEventListener("input",renderFeed));
+  ["emailFilter","displaySort","onlyMultiMatch","hasImages","hideUnknownPrice","hideUnknownSeller","hideUnknownCountry"].forEach(id=>$(id)?.addEventListener("change",renderFeed));
+  $("resetFilters").onclick=resetFilters;
+  $("presetFresh").onclick=()=>{$("marketOrder").value="pdate_to_down_upload";$("displaySort").value="market";toast("Fresh preset set. Scan again.");};
+  $("presetBudget").onclick=()=>{$("marketOrder").value="price_to_up";$("displaySort").value="price_asc";$("priceMax").value=250;renderFeed();};
+  $("presetPremium").onclick=()=>{$("marketOrder").value="price_to_down";$("displaySort").value="price_desc";$("priceMin").value=250;renderFeed();};
+  $("compactBtn").onclick=()=>{compact=!compact;$("compactBtn").textContent=compact?"Cards":"Compact";renderFeed();};
+  $("copyFilteredBtn").onclick=copyFiltered;$("exportBtn").onclick=()=>exportJson("wrota-results.json",visible());
+  $("exportSavedBtn").onclick=()=>exportJson("wrota-saved.json",saved);$("clearSavedBtn").onclick=()=>{saved=[];localSet("wrota.ultimate.saved",saved);renderSaved();renderStats();};
+  $("clearLogBtn").onclick=()=>{$("debugLog").textContent="";};
+  renderTargets();renderFeed();renderSaved();setStatus("Ready");
 }
-function init(){
-  saved=safeGet("wrota.rebuilt.saved",[]);
-  renderTargets();renderResults();renderSaved();bind();setStatus("Ready");
-}
-window.addEventListener("error",e=>{console.error(e.error||e.message);toast("Script issue: "+(e.message||"unknown"));});
-window.addEventListener("unhandledrejection",e=>{console.error(e.reason);toast("Request issue: "+(e.reason?.message||e.reason||"unknown"));});
-if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);else init();
+window.addEventListener("error",e=>{log("script error",{message:e.message});toast("Script issue");});
+window.addEventListener("unhandledrejection",e=>{log("request issue",{message:e.reason?.message||String(e.reason)});});
+document.readyState==="loading"?document.addEventListener("DOMContentLoaded",bind):bind();

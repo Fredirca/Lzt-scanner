@@ -1,27 +1,24 @@
-# Wrota Pro Scanner — rebuilt from scratch
+# Wrota LZT Checker — Ultimate Rebuild
 
-Upload all files to the root of GitHub Pages.
+This is a full rebuild from scratch.
 
-This build is a clean rewrite, not another patch.
+## What this version does
 
-## Main improvements
-
-- Clean app structure
-- Exact cosmetic filter target chips
-- Bulk target parser
-- Marketplace order applied during scan
-- Turbo parallel scanning
-- Smooth drawer-based Filter Lab
-- Live results
-- Detail enrichment
-- Locker image extraction from API data and listing page HTML
-- Proxy image loading as blobs
-- Compact/card view toggle
+- One mixed global feed
+- One card per unique numeric LZT listing
+- Multiple matched cosmetic badges on the same card
+- Marketplace newest order applied to every target request
+- Interleaved page scanning across all targets
+- Detail-page enrichment for title, price, seller, upload date and other data
+- Official locker image endpoints
+- Dedicated Cloudflare Worker image proxy fallback
+- Local filter lab
 - Saved cases
-- Copy message / copy image links
-- Local storage kept compact
+- Export JSON
+- Copy filtered messages
+- Debug console
 
-## Default targets
+## Default OG targets
 
 ```text
 pickaxe[]=pickaxe_lockjaw_og
@@ -31,103 +28,54 @@ skin[]=028_athena_commando_f_og
 skin[]=017_athena_commando_m_og
 ```
 
-## Newest uploaded
+## Image strategy
 
-Set:
-
-```text
-Marketplace order: Newest uploaded
-Display sort: Marketplace order
-```
-
-Then run a new scan. Marketplace order is applied in the API request.
-
-
-## Accounts fixed build
-
-Fixes:
-
-- Blank number filters now count as empty, not `0`.
-- Results are no longer hidden by empty `Price to`, `Skins to`, or `Level to` fields.
-- Listing extraction is more tolerant of LZT response shapes.
-- Numeric object keys from API responses are copied into `item_id` when needed.
-
-
-## Target groups and official locker images
-
-Fixes in this build:
-
-- Results are no longer merged by listing ID across different cosmetic targets.
-- The same listing can appear separately under Raider’s Revenge, OG Skull, OG Ghoul, etc.
-- The label shown on a card is the exact target that produced that hit.
-- Results are grouped by matched target, so Raider’s Revenge does not overwrite skin matches.
-- Official LZT locker image endpoints are used:
-  - `https://lzt.market/<id>/image?type=skins`
-  - `https://lzt.market/<id>/image?type=pickaxes`
-- Listing page HTML is also parsed for price, title, seller, published date, and extra images when available.
-
-
-## Global mixed feed fix
-
-This build changes the results model again:
-
-- One card per unique numeric LZT account/listing.
-- If the same account matches multiple filters, it shows once with multiple badges.
-- Raider’s Revenge no longer becomes the only label; all matched filters are displayed.
-- Newest uploaded sorts the entire mixed account feed globally, not separately by target group.
-- Official LZT image endpoints remain first:
-  - `/image?type=skins`
-  - `/image?type=pickaxes`
-
-
-## Embedded locker images build
-
-This build stops trying to fetch locker images through JavaScript thumbnails.
-
-Instead, every result card embeds the real LZT image endpoints directly:
+The app tries to display official LZT locker images:
 
 ```text
-https://lzt.market/<listing id>/image?type=skins
-https://lzt.market/<listing id>/image?type=pickaxes
+https://lzt.market/<id>/image?type=skins
+https://lzt.market/<id>/image?type=pickaxes
 ```
 
-Each result now shows two embedded panels:
+For reliability, the app uses the included Worker route first when enabled:
 
-- Skins locker
-- Pickaxes locker
-
-Each panel also has an Open link and the card has a Copy embed links button.
-
-
-## Interleaved global feed build
-
-This build fixes the confusing target ordering:
-
-- Active scan targets are collapsed by default.
-- Target chips are clearly labeled as scan inputs only.
-- Scanning is interleaved by page:
-  - page 1 for every target
-  - page 2 for every target
-  - etc.
-- Raider’s Revenge is no longer scanned through all pages before the other targets.
-- Results remain one mixed global feed of unique accounts.
-- Accounts matching multiple filters show multiple badges on the same card.
-- Newest uploaded sorts the combined feed globally.
-
-
-## Direct image embeds fix
-
-This build removes iframe locker embeds.
-
-The result cards now use plain image tags:
-
-```html
-<img src="https://lzt.market/<id>/image?type=skins">
-<img src="https://lzt.market/<id>/image?type=pickaxes">
+```text
+https://your-worker.workers.dev/image/<id>/skins
+https://your-worker.workers.dev/image/<id>/pickaxes
 ```
 
-Why:
+The Worker fetches upstream and streams image bytes with CORS headers.
 
-- LZT can block iframe embedding.
-- These locker endpoints are images, so they should be embedded as `<img>`, not `<iframe>`.
-- Each panel also includes Open and Reload controls.
+## Deploy frontend to GitHub Pages
+
+Upload these files to your GitHub Pages repository root:
+
+```text
+index.html
+404.html
+styles.css
+app.js
+.nojekyll
+```
+
+## Deploy Worker
+
+Install Wrangler, then from the `cloudflare-worker` folder:
+
+```bash
+npm install -g wrangler
+wrangler deploy
+```
+
+Optional secrets:
+
+```bash
+wrangler secret put LZT_API_KEY
+wrangler secret put LZT_COOKIE
+```
+
+Then paste your Worker URL into the app.
+
+## Important
+
+This is a read-only review scanner. It intentionally does not include purchase buttons, cart tools, seller contact automation, or anything for account-trading workflows.
