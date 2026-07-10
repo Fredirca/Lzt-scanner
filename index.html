@@ -72,7 +72,7 @@
         <input id="apiToken" type="password" autocomplete="off" placeholder="Paste API key each visit">
 
         <label>Optional Cloudflare Worker proxy URL</label>
-        <input id="proxyUrl" placeholder="https://your-worker.yourname.workers.dev">
+        <input id="proxyUrl" value="https://shiny-shape-49fd.flruming.workers.dev" placeholder="https://your-worker.yourname.workers.dev">
 
         <div class="actions">
           <button id="testBtn">Test key</button>
@@ -110,6 +110,8 @@
         <label>Sort<input id="orderBy" value="pdate_to_down_upload"></label>
         <label>Currency<input id="currency" value="usd"></label>
         <label>Max terms<input id="maxTerms" type="number" value="25" min="1" max="50"></label>
+        <label>Pages per term<input id="pagesPerTerm" type="number" value="5" min="1" max="25"></label>
+        <label>Newest pages<input id="newestPages" type="number" value="3" min="1" max="25"></label>
       </div>
     </section>
 

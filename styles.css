@@ -122,7 +122,7 @@ input:focus{border-color:rgba(0,212,255,.65);box-shadow:0 0 0 4px rgba(0,212,255
 }
 .term button{padding:0 .15rem;background:transparent;border:0;color:var(--danger);box-shadow:none}
 .add{display:flex;gap:.55rem;margin-top:.85rem}
-.settings{display:grid;grid-template-columns:repeat(5,1fr);gap:.75rem}
+.settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.75rem}
 .empty{color:var(--muted);padding:.6rem 0}
 .result,.case{
   border:1px solid var(--line);border-radius:18px;padding:1rem;margin:.85rem 0;

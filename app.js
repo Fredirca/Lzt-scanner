@@ -1,3 +1,4 @@
+const DEFAULT_PROXY_URL = "https://shiny-shape-49fd.flruming.workers.dev";
 const DEFAULT_TERMS=[
 "og renegade raider","renegade raider","og skull trooper","skull trooper","purple skull",
 "og ghoul trooper","ghoul trooper","pink ghoul","og aerial assault","aerial assault trooper",
@@ -80,7 +81,7 @@ function fields(summary,detail){
 async function lztGet(p,params={}){
   const k=key(); if(!k)throw new Error("Paste your LZT API key first.");
   const base=$("apiBase").value.trim().replace(/\/+$/,"");
-  const proxy=$("proxyUrl").value.trim().replace(/\/+$/,"");
+  const proxy=($("proxyUrl").value.trim() || DEFAULT_PROXY_URL).replace(/\/+$/,"");
   const direct=new URL(base+p);
   Object.entries(params).forEach(([x,v])=>{if(v!==undefined&&v!==null&&v!=="")direct.searchParams.set(x,v);});
   let url=direct.toString(), opts={method:"GET",headers:{Authorization:`Bearer ${k}`,Accept:"application/json"}};
@@ -110,29 +111,94 @@ async function detail(id,fallback){
 }
 
 async function scan(){
-  const max=Math.max(1,Math.min(50,Number($("maxTerms").value||25)));
-  const ts=terms().slice(0,max), found=new Map(), errors=[];
-  badge("Scanning...","warn");
-  $("results").innerHTML="<p class='empty'>Scanning by watchlist terms and newest listings. Keep this tab open.</p>";
+  const maxTerms=Math.max(1,Math.min(50,Number($("maxTerms").value||25)));
+  const pagesPerTerm=Math.max(1,Math.min(25,Number($("pagesPerTerm")?.value||5)));
+  const newestPages=Math.max(1,Math.min(25,Number($("newestPages")?.value||3)));
 
-  for(const term of ts){
-    try{
-      const data=await lztGet($("categoryPath").value.trim(),{page:1,order_by:$("orderBy").value.trim(),currency:$("currency").value.trim(),title:term});
-      for(const item of extractItems(data)){const id=itemId(item); if(id&&matched(item).length)found.set(id,item);}
-      await sleep(400);
-    }catch(e){errors.push({term,error:e.message});}
+  const ts=terms().slice(0,maxTerms), found=new Map(), errors=[];
+  const totalSearches=(ts.length*pagesPerTerm)+newestPages;
+  let completed=0;
+
+  function progress(label){
+    completed++;
+    badge(`Scanning ${completed}/${totalSearches}`,"warn");
+    $("results").innerHTML=`<p class='empty'>${esc(label)}<br>Checking existing listings across multiple pages. Keep this tab open.</p>`;
   }
 
-  try{
-    const data=await lztGet($("categoryPath").value.trim(),{page:1,order_by:$("orderBy").value.trim(),currency:$("currency").value.trim()});
-    for(const item of extractItems(data)){const id=itemId(item); if(id&&matched(item).length)found.set(id,item);}
-  }catch(e){errors.push({term:"newest",error:e.message});}
+  badge("Scanning...","warn");
+  $("results").innerHTML="<p class='empty'>Starting existing-listings scan. Keep this tab open.</p>";
+
+  // Search older existing listings by paging through every watchlist term.
+  for(const term of ts){
+    for(let page=1; page<=pagesPerTerm; page++){
+      try{
+        const data=await lztGet($("categoryPath").value.trim(),{
+          page,
+          order_by:$("orderBy").value.trim(),
+          currency:$("currency").value.trim(),
+          title:term
+        });
+
+        const items=extractItems(data);
+        for(const item of items){
+          const id=itemId(item);
+          if(id&&matched(item).length)found.set(id,item);
+        }
+
+        progress(`Term: ${term} · page ${page}/${pagesPerTerm} · found ${found.size} unique match(es)`);
+
+        // If the API returned no items for this term/page, later pages are unlikely to help.
+        if(!items.length) break;
+
+        await sleep(350);
+      }catch(e){
+        errors.push({term,page,error:e.message});
+        progress(`Error on term: ${term} · page ${page}`);
+        await sleep(350);
+      }
+    }
+  }
+
+  // Also scan multiple newest pages, because some listings may not include the exact title term.
+  for(let page=1; page<=newestPages; page++){
+    try{
+      const data=await lztGet($("categoryPath").value.trim(),{
+        page,
+        order_by:$("orderBy").value.trim(),
+        currency:$("currency").value.trim()
+      });
+
+      const items=extractItems(data);
+      for(const item of items){
+        const id=itemId(item);
+        if(id&&matched(item).length)found.set(id,item);
+      }
+
+      progress(`Newest listings · page ${page}/${newestPages} · found ${found.size} unique match(es)`);
+
+      if(!items.length) break;
+
+      await sleep(350);
+    }catch(e){
+      errors.push({term:"newest",page,error:e.message});
+      progress(`Error on newest listings · page ${page}`);
+      await sleep(350);
+    }
+  }
 
   const results=[];
+  let detailed=0;
+
   for(const [id,item] of found.entries()){
+    detailed++;
+    badge(`Loading details ${detailed}/${found.size}`,"warn");
+    $("results").innerHTML=`<p class='empty'>Fetching full details for ${detailed}/${found.size} matched listing(s).</p>`;
+
     const d=await detail(id,item);
     const m=[...new Set([...matched(item),...matched(d)])].sort();
     results.push({createdAt:new Date().toISOString(),...fields(item,d),matched_terms:m,raw:{summary:item,detail:d}});
+
+    await sleep(250);
   }
 
   const old=cases(), seen=new Set(old.map(c=>c.item_id));
