@@ -160,6 +160,162 @@ function renderActiveCosmetics(){
   box.innerHTML=filters.map(f=>`<span class="chip">${esc(f.label || labelForCosmetic(f.param,f.id))}</span>`).join("");
 }
 
+
+function allValuesByKey(value, keys, seen=new WeakSet(), out=[]){
+  if(value===null || value===undefined) return out;
+  if(typeof value!=="object") return out;
+  if(seen.has(value)) return out;
+  seen.add(value);
+
+  if(Array.isArray(value)){
+    value.forEach(x=>allValuesByKey(x,keys,seen,out));
+    return out;
+  }
+
+  for(const [key,next] of Object.entries(value)){
+    if(keys.includes(key) && next!==undefined && next!==null && next!=="") out.push(next);
+    allValuesByKey(next,keys,seen,out);
+  }
+
+  return out;
+}
+
+function firstDeep(value, keys, fallback="Unknown"){
+  const found=allValuesByKey(value,keys);
+  for(const x of found){
+    if(x!==undefined && x!==null && x!=="") return x;
+  }
+  return fallback;
+}
+
+function numberFromTitle(title, patterns){
+  const text=String(title||"");
+  for(const pattern of patterns){
+    const match=text.match(pattern);
+    if(match) return match[1];
+  }
+  return "";
+}
+
+function titleEmailStatus(title){
+  const text=String(title||"").toLowerCase();
+  if(text.includes("no email") || text.includes("without email")) return "❌";
+  if(text.includes("changeable email") || text.includes("email changeable") || text.includes("full access")) return "✅";
+  if(text.includes("same email")) return "Same email";
+  return "";
+}
+
+function normalizeSeller(value){
+  if(!value) return "";
+  if(typeof value==="string") return value;
+  return value.username || value.name || value.login || value.display_name || "";
+}
+
+function mergeListingData(summary, detailData){
+  const root = detailData?.item || detailData?.data || detailData?.account || detailData?.response || detailData || {};
+  return {summary, detail:root, combined:{...summary, ...root}};
+}
+
+function looksKnown(value){
+  return value!==undefined && value!==null && value!=="" && value!=="Unknown";
+}
+
+function extractListingFields(summary, detailData, matchedFilters=[]){
+  const merged=mergeListingData(summary,detailData);
+  const combined=merged.combined;
+  const text=deepText({summary, detailData}).toLowerCase();
+  const title=summary?.title || summary?.item_title || combined.title || combined.item_title || combined.name || "";
+  const id=listingId(summary) || listingId(combined) || listingId(merged.detail);
+  const seller=normalizeSeller(summary?.seller) || normalizeSeller(combined.seller) || normalizeSeller(combined.user) || firstDeep({summary,detailData},["seller_username","seller_name","username"],"");
+  const price=summary?.price ?? summary?.price_usd ?? combined.price ?? combined.price_usd ?? combined.cost ?? combined.amount ?? firstDeep({summary,detailData},["price","price_usd","cost","amount"],"");
+
+  let skinCount =
+    summary?.skin_count ?? summary?.skins_count ?? summary?.skins ?? summary?.outfits_count ?? summary?.outfit_count ??
+    firstDeep({summary,detailData},["skin_count","skins_count","outfits_count","outfit_count","fortnite_skins_count","skins_total"],"");
+
+  if(!looksKnown(skinCount)){
+    skinCount = numberFromTitle(title, [
+      /(\d+)\s*skins?/i,
+      /(\d+)\s*outfits?/i
+    ]);
+  }
+
+  let emailChangeable =
+    summary?.email_changeable ?? summary?.change_email ?? summary?.changeable_email ?? summary?.can_change_email ??
+    firstDeep({summary,detailData},["email_changeable","change_email","changeable_email","can_change_email","emailChangeable"],"");
+
+  if(!looksKnown(emailChangeable)){
+    emailChangeable = titleEmailStatus(title) || "Unknown";
+  }
+
+  let seasonLevel =
+    summary?.season_level ?? summary?.level ?? summary?.account_level ??
+    firstDeep({summary,detailData},["season_level","account_level","fortnite_level","level","seasonLevel"],"");
+
+  if(!looksKnown(seasonLevel)){
+    seasonLevel = numberFromTitle(title, [
+      /level\s*[:#-]?\s*(\d+)/i,
+      /lvl\s*[:#-]?\s*(\d+)/i,
+      /season\s*level\s*[:#-]?\s*(\d+)/i
+    ]);
+  }
+
+  const country =
+    summary?.country || summary?.country_code || summary?.origin ||
+    firstDeep({summary,detailData},["country","country_code","origin","region"],"Unknown");
+
+  const lastActivity =
+    summary?.last_activity || summary?.last_activity_at || summary?.last_seen || summary?.last_login ||
+    firstDeep({summary,detailData},["last_activity","last_activity_at","last_seen","last_login","last_activity_date","lastVisitDate"],"Unknown");
+
+  let vbucks =
+    summary?.vbucks ?? summary?.v_bucks ?? summary?.bucks ??
+    firstDeep({summary,detailData},["vbucks","v_bucks","bucks","vb"],"");
+
+  if(!looksKnown(vbucks)){
+    vbucks = numberFromTitle(title, [/(\d+)\s*vb/i, /(\d+)\s*v-?bucks/i]);
+  }
+
+  const platform =
+    summary?.platform || firstDeep({summary,detailData},["platform","platforms"],"");
+
+  const link=id ? `https://lzt.market/${id}/` : "";
+
+  return {
+    createdAt:new Date().toISOString(),
+    item_id:id,
+    title:title || (id ? `Listing ${id}` : "Listing"),
+    skin_count:looksKnown(skinCount) ? skinCount : "Unknown",
+    exclusives:Array.isArray(matchedFilters)&&matchedFilters.length ? matchedFilters.join(", ") : "Selected cosmetic filter",
+    email_changeable:looksKnown(emailChangeable) ? emailChangeable : "Unknown",
+    price:price,
+    currency:String(summary?.currency || combined.currency || combined.price_currency || "USD").toUpperCase(),
+    seller:seller || "Unknown",
+    season_level:looksKnown(seasonLevel) ? seasonLevel : "Unknown",
+    country:looksKnown(country) ? country : "Unknown",
+    last_activity:looksKnown(lastActivity) ? lastActivity : "Unknown",
+    vbucks:looksKnown(vbucks) ? vbucks : "",
+    platform:looksKnown(platform) ? platform : "",
+    url:link,
+    matched_filters:Array.isArray(matchedFilters)?matchedFilters:[String(matchedFilters)],
+    note:"Enriched from listing search/detail data"
+  };
+}
+
+async function getListingDetail(id){
+  if(!/^\d+$/.test(String(id))) return {};
+  try{
+    return await lztGet(`/${id}`);
+  }catch(firstError){
+    try{
+      return await lztGet(`/fortnite/${id}`);
+    }catch(secondError){
+      return {detail_error:firstError.message || secondError.message};
+    }
+  }
+}
+
+
 function listingId(item){
   const raw=item?.item_id ?? item?.itemId ?? item?.account_id ?? item?.accountId ?? "";
   const text=String(raw);
@@ -184,19 +340,22 @@ function compactCase(item){
     item_id:id,
     title:item.title||item.item_title||item.name||(id?`Listing ${id}`:"Listing"),
     skin_count:item.skin_count??item.skins_count??item.skins??item.outfits_count??item.outfit_count??"Unknown",
-    exclusives:Array.isArray(filters)&&filters.length?filters.join(", "):"Selected cosmetic filter",
+    exclusives:item.exclusives || (Array.isArray(filters)&&filters.length?filters.join(", "):"Selected cosmetic filter"),
     email_changeable:item.email_changeable??item.change_email??item.changeable_email??item.can_change_email??"Unknown",
     price:item.price??item.price_usd??item.cost??item.amount??"",
     currency:item.currency||item.price_currency||"USD",
-    seller:typeof item.seller==="string"?item.seller:(item.seller?.username||item.seller?.name||item.user?.username||item.username||item.seller_username||""),
+    seller:typeof item.seller==="string"?item.seller:(item.seller?.username||item.seller?.name||item.user?.username||item.username||item.seller_username||"Unknown"),
     season_level:item.season_level??item.level??item.account_level??"Unknown",
     country:item.country||item.country_code||item.origin||"Unknown",
     last_activity:item.last_activity||item.last_activity_at||item.last_seen||item.last_login||"Unknown",
+    vbucks:item.vbucks??item.v_bucks??item.bucks??"",
+    platform:item.platform||"",
     url:id?`https://lzt.market/${id}/`:"",
     matched_filters:Array.isArray(filters)?filters:[String(filters)],
     note:item.note||"Matched by selected cosmetic filter"
   };
 }
+
 
 function loadCases(){
   const legacy=safeLocalGet("wrota.selectoutfits.cases.v1",[]);
@@ -272,25 +431,10 @@ function paramsForCosmetic(filter,page){
   return params;
 }
 
-function fieldSet(summary,matchedLabel){
-  const id=listingId(summary);
-  const sellerObj=summary.seller||summary.user||{};
-  const seller=typeof sellerObj==="string"?sellerObj:(sellerObj.username||sellerObj.name||summary.seller_username||summary.username||"");
-  return compactCase({
-    createdAt:new Date().toISOString(),
-    item_id:id,
-    title:summary.title||summary.item_title||summary.name||(id?`Listing ${id}`:"Listing"),
-    skin_count:summary.skin_count??summary.skins_count??summary.skins??summary.outfits_count??summary.outfit_count??"Unknown",
-    email_changeable:summary.email_changeable??summary.change_email??summary.changeable_email??summary.can_change_email??"Unknown",
-    price:summary.price??summary.price_usd??summary.cost??summary.amount??"",
-    currency:String(summary.currency||summary.price_currency||"USD").toUpperCase(),
-    seller:seller,
-    season_level:summary.season_level??summary.level??summary.account_level??"Unknown",
-    country:summary.country||summary.country_code||summary.origin||"Unknown",
-    last_activity:summary.last_activity||summary.last_activity_at||summary.last_seen||summary.last_login||"Unknown",
-    matched_filters:[matchedLabel], exclusives:matchedLabel
-  });
+function fieldSet(summary,matchedLabel,detailData={}){
+  return compactCase(extractListingFields(summary,detailData,[matchedLabel]));
 }
+
 function progress(done,total,label){
   const pct=total?Math.round((done/total)*100):0;
   $("progressWrap")?.classList.remove("hidden");
@@ -300,23 +444,45 @@ function progress(done,total,label){
 }
 function card(caseItem){
   const link=/^\d+$/.test(String(caseItem.item_id))?`https://lzt.market/${caseItem.item_id}/`:"";
+  const emailIcon=iconBool(caseItem.email_changeable);
+  const extraLines=[
+    caseItem.vbucks ? `💎 V-Bucks: ${caseItem.vbucks}` : "",
+    caseItem.platform ? `🎮 Platform: ${caseItem.platform}` : ""
+  ].filter(Boolean).join("\n");
+
   const output=
 `New Fortnite listing on LZT Market
 
 Skin Count: ${caseItem.skin_count||"Unknown"}
 Exclusives: ${caseItem.exclusives||(caseItem.matched_filters||[]).join(", ")||"Selected cosmetic filter"}
-Email Changeable: ${iconBool(caseItem.email_changeable)}
+Email Changeable: ${emailIcon}
 
 🏷️ Title: ${caseItem.title||"Untitled listing"}
 👤 Seller: ${caseItem.seller||"Unknown"}
 💵 Price: ${priceText(caseItem.price)}
 🔢 Season Level: ${caseItem.season_level||"Unknown"}
 🌍 Country: ${caseItem.country||"Unknown"}
-⏱️ Last Activity: ${cleanDate(caseItem.last_activity)}
+⏱️ Last Activity: ${cleanDate(caseItem.last_activity)}${extraLines ? "\n"+extraLines : ""}
 🔗 Link: ${link||"Unavailable"}`;
 
-  return `<article class="listing-alert-card">
+  return `<article class="listing-alert-card premium-card">
+    <div class="listing-top">
+      <div>
+        <span class="listing-kicker">New Fortnite listing</span>
+        <h4>${esc(caseItem.exclusives || "Selected cosmetic filter")}</h4>
+      </div>
+      <div class="price-badge">${esc(priceText(caseItem.price))}</div>
+    </div>
+
+    <div class="info-grid">
+      <div><span>Skin Count</span><strong>${esc(caseItem.skin_count||"Unknown")}</strong></div>
+      <div><span>Email</span><strong>${esc(emailIcon)}</strong></div>
+      <div><span>Level</span><strong>${esc(caseItem.season_level||"Unknown")}</strong></div>
+      <div><span>Country</span><strong>${esc(caseItem.country||"Unknown")}</strong></div>
+    </div>
+
     <pre class="listing-output">${esc(output)}</pre>
+
     <div class="card-actions">
       ${link?`<a class="ghost small" target="_blank" rel="noopener" href="${esc(link)}">Open source</a>`:""}
       <button class="ghost small" type="button" data-copy-text="${esc(output)}">Copy message</button>
@@ -325,6 +491,7 @@ Email Changeable: ${iconBool(caseItem.email_changeable)}
     <details class="raw"><summary>Case data</summary><pre>${esc(JSON.stringify(caseItem,null,2))}</pre></details>
   </article>`;
 }
+
 function wireCopyButtons(){
   document.querySelectorAll("[data-copy], [data-copy-text]").forEach(btn=>{
     btn.onclick=async()=>{try{await navigator.clipboard.writeText(btn.dataset.copyText||btn.dataset.copy||"");toast("Copied");}catch{toast("Copy failed");}};
@@ -373,7 +540,7 @@ async function scan(){
   saveCurrentResults([]);
   renderResults([]);
   setStatus("Scanning","warn");
-  setSubtitle("Scanning exact selected cosmetic filters.");
+  setSubtitle("Scanning exact filters, then enriching listing details.");
   if($("scanBtn"))$("scanBtn").disabled=true;
 
   try{
@@ -387,9 +554,9 @@ async function scan(){
             const id=listingId(item);
             if(!id)continue;
             const label=filter.label || labelForCosmetic(filter.param,filter.id);
-            const existing=found.get(id)||fieldSet(item,label);
-            existing.matched_filters=[...new Set([...(existing.matched_filters||[]),label])];
-            existing.exclusives=existing.matched_filters.join(", ");
+            const existing=found.get(id) || {summary:item, labels:[]};
+            existing.summary={...existing.summary, ...item};
+            existing.labels=[...new Set([...(existing.labels||[]),label])];
             found.set(id,existing);
           }
 
@@ -406,9 +573,20 @@ async function scan(){
       }
     }
 
-    const results=[...found.values()].map(compactCase);
-    saveCurrentResults(results);
-    renderResults(currentResults());
+    const enriched=[];
+    const entries=[...found.entries()];
+    let checked=0;
+
+    for(const [id,pack] of entries){
+      checked++;
+      progress(checked,entries.length || 1,`Filling listing info ${checked}/${entries.length}`);
+      const detailData=await getListingDetail(id);
+      const record=extractListingFields(pack.summary,detailData,pack.labels);
+      enriched.push(compactCase(record));
+      saveCurrentResults(enriched);
+      renderResults(currentResults());
+      await sleep(Math.min(delay,1200));
+    }
 
     const old=cases();
     const seen=new Set(old.map(c=>String(c.item_id)));
@@ -423,8 +601,8 @@ async function scan(){
     const stamp=new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
     safeLocalSet("wrota.selectoutfits.lastScan",stamp);
     updateStats();
-    setSubtitle(results.length?"Scan complete.":"No numeric listings found for the selected exact filters.");
-    setStatus(`Done · ${results.length} found`,"ok");
+    setSubtitle(enriched.length?"Enriched scan complete.":"No numeric listings found for the selected exact filters.");
+    setStatus(`Done · ${enriched.length} found`,"ok");
   }catch(error){
     if(error.isRateLimit){
       setStatus("Rate limited","bad");
@@ -441,6 +619,7 @@ async function scan(){
     updateStats();
   }
 }
+
 
 function downloadJson(filename,data){
   const blob=new Blob([JSON.stringify(data.map?data.map(compactCase):data,null,2)],{type:"application/json"});

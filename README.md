@@ -40,3 +40,25 @@ skin[]=017_athena_commando_m_og
 ```
 
 The parser now supports both `skin[]` and `pickaxe[]` filters, including URL-encoded `skin%5B%5D=...`.
+
+
+## Polished enriched output
+
+This build improves result cards and fills more fields by fetching listing details for every numeric listing ID.
+
+It now attempts to populate:
+
+- skin count
+- exclusives
+- email changeable / email status
+- title
+- seller
+- price
+- season level
+- country
+- last activity
+- V-Bucks when present
+- platform when present
+- numeric LZT listing link
+
+If LZT does not provide a field in search or detail data, the app leaves it as `Unknown` instead of inventing it.
