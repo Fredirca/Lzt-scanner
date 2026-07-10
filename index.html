@@ -34,7 +34,7 @@
         <div>
           <span class="pill">Rebuilt from scratch</span>
           <h1>Fortnite listing scanner</h1>
-          <p>Exact cosmetic filters, one mixed global feed, newest sorting across all accounts, and embedded LZT locker images.</p>
+          <p>Exact cosmetic filters, interleaved scanning, one mixed global feed, and direct LZT locker image embeds.</p>
         </div>
         <div class="hero-actions">
           <div class="speed-pill" id="speedBadge">⚡ Ready</div>
@@ -76,7 +76,15 @@
             <button id="addTargetBtn" class="secondary" type="button">Add</button>
           </div>
 
-          <div id="targetChips" class="target-chips"></div>
+          <details class="target-details">
+            <summary>
+              <span>Active scan targets</span>
+              <b id="targetCount">0</b>
+            </summary>
+            <p class="target-help">Targets are only search inputs. They do not control the final result order.</p>
+            <div id="targetChips" class="target-chips"></div>
+          </details>
+
           <textarea id="bulkTargets" rows="4" spellcheck="false" placeholder="Bulk paste filters here, one per line or separated by spaces."></textarea>
 
           <div class="button-row">
@@ -130,10 +138,11 @@
 
           <label class="toggle">
             <input id="lockerImages" type="checkbox" checked>
-            <span>Embed locker images</span>
+            <span>Direct locker images</span>
           </label>
         </div>
 
+        <div class="global-order-note" id="globalOrderNote">Newest uploaded sorts the combined account feed, not each target separately.</div>
         <div class="quick-orders">
           <button class="order-chip active" data-order="pdate_to_down_upload" type="button">Newest uploaded</button>
           <button class="order-chip" data-order="price_to_up" type="button">Cheapest</button>
@@ -154,7 +163,7 @@
           <div>
             <span class="step">04</span>
             <h2>Live results</h2>
-            <p id="resultSubtitle">Run a scan to see one global mixed feed. Accounts that match multiple filters show multiple badges.</p>
+            <p id="resultSubtitle">Run a scan to see one global mixed feed. Target chips are scan inputs only; results are sorted globally.</p>
           </div>
           <div class="result-actions">
             <button id="compactViewBtn" class="ghost small" type="button">Compact</button>

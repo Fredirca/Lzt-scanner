@@ -97,3 +97,37 @@ Each result now shows two embedded panels:
 - Pickaxes locker
 
 Each panel also has an Open link and the card has a Copy embed links button.
+
+
+## Interleaved global feed build
+
+This build fixes the confusing target ordering:
+
+- Active scan targets are collapsed by default.
+- Target chips are clearly labeled as scan inputs only.
+- Scanning is interleaved by page:
+  - page 1 for every target
+  - page 2 for every target
+  - etc.
+- Raider’s Revenge is no longer scanned through all pages before the other targets.
+- Results remain one mixed global feed of unique accounts.
+- Accounts matching multiple filters show multiple badges on the same card.
+- Newest uploaded sorts the combined feed globally.
+
+
+## Direct image embeds fix
+
+This build removes iframe locker embeds.
+
+The result cards now use plain image tags:
+
+```html
+<img src="https://lzt.market/<id>/image?type=skins">
+<img src="https://lzt.market/<id>/image?type=pickaxes">
+```
+
+Why:
+
+- LZT can block iframe embedding.
+- These locker endpoints are images, so they should be embedded as `<img>`, not `<iframe>`.
+- Each panel also includes Open and Reload controls.

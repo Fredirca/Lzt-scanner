@@ -193,3 +193,127 @@ label span{display:block;color:var(--muted);font-size:12px;font-weight:900;margi
   .embed-grid{grid-template-columns:1fr;}
   .embed-frame-wrap{height:280px;}
 }
+
+
+.target-details{
+  border:1px solid var(--line);
+  border-radius:18px;
+  background:rgba(255,255,255,.035);
+  margin-bottom:12px;
+  overflow:hidden;
+}
+.target-details summary{
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 14px;
+  color:var(--soft);
+  font-weight:950;
+}
+.target-details summary b{
+  min-width:30px;
+  height:26px;
+  border-radius:999px;
+  display:grid;
+  place-items:center;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  color:#06111f;
+  font-size:13px;
+}
+.target-help{
+  margin:0 14px 10px;
+  color:var(--muted);
+  font-size:13px;
+}
+.target-details .target-chips{
+  padding:0 12px 12px;
+}
+.target-chip small{
+  display:inline-flex;
+  padding:3px 6px;
+  border-radius:999px;
+  background:rgba(0,0,0,.22);
+  color:var(--soft);
+  font-size:10px;
+  font-weight:950;
+  margin-right:2px;
+}
+.global-order-note{
+  margin-top:14px;
+  padding:11px 13px;
+  border-radius:16px;
+  border:1px solid rgba(96,229,177,.16);
+  background:rgba(96,229,177,.07);
+  color:var(--ok);
+  font-size:13px;
+  font-weight:850;
+}
+
+
+.direct-locker-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  padding:0 14px 14px;
+}
+.direct-locker-card{
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:rgba(0,0,0,.18);
+  overflow:hidden;
+}
+.direct-locker-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:10px 12px;
+  border-bottom:1px solid var(--line);
+}
+.direct-locker-head strong{
+  font-size:13px;
+}
+.direct-locker-head div{
+  display:flex;
+  align-items:center;
+  gap:7px;
+}
+.direct-locker-head a{
+  color:var(--accent);
+  text-decoration:none;
+  font-size:12px;
+  font-weight:950;
+}
+.direct-locker-image{
+  position:relative;
+  display:block;
+  min-height:260px;
+  background:rgba(0,0,0,.28);
+  overflow:auto;
+}
+.direct-locker-image img{
+  width:100%;
+  height:auto;
+  display:block;
+  background:rgba(255,255,255,.04);
+}
+.image-failed{
+  display:none;
+  position:absolute;
+  inset:0;
+  place-items:center;
+  padding:18px;
+  color:var(--muted);
+  text-align:center;
+  font-weight:900;
+  background:rgba(0,0,0,.65);
+}
+.direct-locker-image.failed .image-failed{
+  display:grid;
+}
+@media (max-width:850px){
+  .direct-locker-grid{grid-template-columns:1fr;}
+  .direct-locker-image{min-height:220px;}
+}

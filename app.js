@@ -247,7 +247,8 @@ function parseTargets(text){
   return out;
 }
 function renderTargets(){
-  $("targetChips").innerHTML=targets.map((t,i)=>`<span class="target-chip">${esc(t.label)}<button data-remove-target="${i}" type="button">×</button></span>`).join("");
+  if($("targetCount"))$("targetCount").textContent=String(targets.length);
+  $("targetChips").innerHTML=targets.map((t,i)=>`<span class="target-chip"><small>${esc(t.param)}</small>${esc(t.label)}<button data-remove-target="${i}" type="button">×</button></span>`).join("");
   document.querySelectorAll("[data-remove-target]").forEach(btn=>btn.onclick=()=>{targets.splice(Number(btn.dataset.removeTarget),1);renderTargets();});
 }
 
@@ -548,44 +549,53 @@ function alertText(r){
   return `New Fortnite listing on LZT Market\n\nSkin Count: ${r.skin_count||"Unknown"}\nExclusives: ${r.exclusives||"Selected cosmetic filter"}\nEmail Changeable: ${boolIcon(r.email_changeable)}\n\n🏷️ Title: ${r.title||"Untitled listing"}\n👤 Seller: ${r.seller||"Unknown"}\n💵 Price: ${priceText(r.price)}\n🔢 Season Level: ${r.season_level||"Unknown"}\n🌍 Country: ${r.country||"Unknown"}\n⏱️ Last Activity: ${niceDate(r.last_activity)}${extra?"\n"+extra:""}\n🔗 Link: https://lzt.market/${r.item_id}/`;
 }
 
+
 function lztEmbedUrl(id,type){
   if(!/^\d+$/.test(String(id)))return "";
   return `https://lzt.market/${id}/image?type=${type}`;
 }
 
-function renderLockerEmbeds(r){
+function renderDirectLockerImages(r){
   if(!$("lockerImages")?.checked || !r.item_id){
-    return `<div class="no-images">Locker image embeds are disabled.</div>`;
+    return `<div class="no-images">Locker images are disabled.</div>`;
   }
 
   const skins=lztEmbedUrl(r.item_id,"skins");
   const pickaxes=lztEmbedUrl(r.item_id,"pickaxes");
 
-  return `<div class="embed-grid">
-    <article class="embed-card">
-      <div class="embed-head">
+  return `<div class="direct-locker-grid">
+    <article class="direct-locker-card">
+      <div class="direct-locker-head">
         <strong>Skins locker</strong>
-        <a href="${esc(skins)}" target="_blank" rel="noopener">Open</a>
+        <div>
+          <a href="${esc(skins)}" target="_blank" rel="noopener">Open</a>
+          <button class="ghost small" data-reload-img="skins-${esc(r.item_id)}" type="button">Reload</button>
+        </div>
       </div>
-      <div class="embed-frame-wrap">
-        <iframe src="${esc(skins)}" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-same-origin allow-scripts allow-popups"></iframe>
-      </div>
+      <a class="direct-locker-image" href="${esc(skins)}" target="_blank" rel="noopener">
+        <img id="skins-${esc(r.item_id)}" src="${esc(skins)}" loading="lazy" referrerpolicy="no-referrer" alt="LZT skins locker image for ${esc(r.item_id)}" onerror="this.closest('.direct-locker-image').classList.add('failed')">
+        <span class="image-failed">Image blocked here — click Open</span>
+      </a>
     </article>
 
-    <article class="embed-card">
-      <div class="embed-head">
+    <article class="direct-locker-card">
+      <div class="direct-locker-head">
         <strong>Pickaxes locker</strong>
-        <a href="${esc(pickaxes)}" target="_blank" rel="noopener">Open</a>
+        <div>
+          <a href="${esc(pickaxes)}" target="_blank" rel="noopener">Open</a>
+          <button class="ghost small" data-reload-img="pickaxes-${esc(r.item_id)}" type="button">Reload</button>
+        </div>
       </div>
-      <div class="embed-frame-wrap">
-        <iframe src="${esc(pickaxes)}" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-same-origin allow-scripts allow-popups"></iframe>
-      </div>
+      <a class="direct-locker-image" href="${esc(pickaxes)}" target="_blank" rel="noopener">
+        <img id="pickaxes-${esc(r.item_id)}" src="${esc(pickaxes)}" loading="lazy" referrerpolicy="no-referrer" alt="LZT pickaxes locker image for ${esc(r.item_id)}" onerror="this.closest('.direct-locker-image').classList.add('failed')">
+        <span class="image-failed">Image blocked here — click Open</span>
+      </a>
     </article>
   </div>
 
   <div class="image-actions">
-    <button class="ghost small" data-copy-text="${esc([skins,pickaxes].join("\\n"))}" type="button">Copy embed links</button>
-    <span>Embedded from LZT image endpoints</span>
+    <button class="ghost small" data-copy-text="${esc([skins,pickaxes].join("\\n"))}" type="button">Copy image links</button>
+    <span>Direct LZT image embeds</span>
   </div>`;
 }
 
@@ -610,7 +620,7 @@ function card(r){
     <pre class="message">${esc(msg)}</pre>
     <details class="gallery-wrap" open>
       <summary>Locker images</summary>
-      ${renderLockerEmbeds(r)}
+      ${renderDirectLockerImages(r)}
     </details>
     <div class="card-actions">
       <a class="ghost small" href="https://lzt.market/${esc(r.item_id)}/" target="_blank" rel="noopener">Open source</a>
@@ -649,6 +659,14 @@ function renderSaved(){
 function wireButtons(root=document){
   root.querySelectorAll("[data-copy-text]").forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.copyText||"");toast("Copied");}catch{toast("Copy failed");}});
   root.querySelectorAll("[data-save]").forEach(b=>b.onclick=()=>{const r=results.find(x=>x.item_id===b.dataset.save);if(!r)return;if(!saved.some(x=>x.item_id===r.item_id))saved.unshift(r);saved=saved.slice(0,100);safeSet("wrota.rebuilt.saved",saved);renderSaved();renderResults();toast("Saved");});
+  root.querySelectorAll("[data-reload-img]").forEach(b=>b.onclick=()=>{
+    const img=document.getElementById(b.dataset.reloadImg);
+    if(!img)return;
+    const base=img.src.split("&_reload=")[0].split("?_reload=")[0];
+    const sep=base.includes("?")?"&":"?";
+    img.closest(".direct-locker-image")?.classList.remove("failed");
+    img.src=`${base}${sep}_reload=${Date.now()}`;
+  });
 }
 function summaryText(){
   const f=getFilters();const p=[];
@@ -677,9 +695,19 @@ async function scan(){
   const parallel=clampNum($("parallelRequests").value,1,10,5);
   const delay=clampNum($("scanDelay").value,0,15000,250);
   const tasks=[];
-  targets.forEach(t=>{for(let page=1;page<=pages;page++)tasks.push(async()=>{if(delay)await sleep(delay);const data=await lztGet("/fortnite",paramsFor(t,page));return {target:t,page,items:extractItems(data)};});});
+  // Interleaved global scan: page 1 for every target, then page 2 for every target, etc.
+  // This stops the first target from dominating the feed before other targets are scanned.
+  for(let page=1;page<=pages;page++){
+    targets.forEach(t=>{
+      tasks.push(async()=>{
+        if(delay)await sleep(delay);
+        const data=await lztGet("/fortnite",paramsFor(t,page));
+        return {target:t,page,items:extractItems(data)};
+      });
+    });
+  }
   const found=new Map();
-  $("scanBtn").disabled=true;setStatus("Scanning","running");$("resultSubtitle").textContent="Scanning pages. Results appear instantly.";
+  $("scanBtn").disabled=true;setStatus("Scanning","running");$("resultSubtitle").textContent="Scanning all targets together. Results are merged into one global feed.";
 
   try{
     await pool(tasks,parallel,(done,total,idx,res)=>{
