@@ -1,9 +1,7 @@
 const DEFAULT_PROXY="https://shiny-shape-49fd.flruming.workers.dev";
 const API_BASE="https://prod-api.lzt.market";
-const WEB_BASE="https://lzt.market";
-const MIN_REQUEST_GAP_MS=225; // docs rate limit: 300/min = one every 200ms; 225ms leaves safety margin
-const MAX_API_RETRIES=3;
-let lastRequestAt=0;
+const MIN_GAP=225;
+const MAX_RETRIES=3;
 
 const DEFAULT_TARGETS=[
   {param:"pickaxe[]",id:"pickaxe_lockjaw_og",label:"Raider’s Revenge OG Style"},
@@ -17,8 +15,8 @@ let targets=[...DEFAULT_TARGETS];
 let results=[];
 let saved=[];
 let compact=false;
-let imgFails=0;
-let blobUrls=new Map();
+let reqCount=0;
+let lastReq=0;
 
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c]));
@@ -27,191 +25,58 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function log(line,obj){
   const msg=`[${new Date().toLocaleTimeString()}] ${line}${obj?" "+JSON.stringify(obj):""}`;
   $("debugLog").textContent=msg+"\n"+$("debugLog").textContent.slice(0,12000);
-  $("miniLog").textContent=msg;
   console.log(line,obj||"");
 }
-function status(t){$("status").textContent=t;}
-function toast(t){log(t);}
-function getCfg(){return {
-  proxy:($("proxyUrl").value||DEFAULT_PROXY).replace(/\/+$/,""),
-  key:$("apiKey").value.trim(),
-  cookie:$("cookie").value.trim()
-};}
-function saveCfg(){
-  const c=getCfg();
-  localStorage.setItem("wrota.cmd.cfg",JSON.stringify(c));
-}
-function loadCfg(){
-  try{
-    const c=JSON.parse(localStorage.getItem("wrota.cmd.cfg")||"{}");
-    $("proxyUrl").value=c.proxy||DEFAULT_PROXY;
-    $("apiKey").value=c.key||"";
-    $("cookie").value=c.cookie||"";
-  }catch{$("proxyUrl").value=DEFAULT_PROXY;}
-}
-function proxyUrl(target){
-  return `${getCfg().proxy}/proxy?url=${encodeURIComponent(target)}`;
-}
-function headers(accept="application/json"){
-  const c=getCfg();
-  const h={"Accept":accept};
-  if(c.key)h["X-LZT-Key"]=c.key;
-  if(c.cookie)h["X-LZT-Cookie"]=c.cookie;
-  return h;
-}
+function status(s){$("status").textContent=s}
+function cfg(){return {proxy:($("proxyUrl").value||DEFAULT_PROXY).replace(/\/+$/,""),key:$("apiKey").value.trim()}}
+function proxyUrl(target){return `${cfg().proxy}/proxy?url=${encodeURIComponent(target)}`}
+function headers(){const h={"Accept":"application/json"};if(cfg().key)h["X-LZT-Key"]=cfg().key;return h}
+function saveCfg(){localStorage.setItem("wrota.api.cfg",JSON.stringify(cfg()))}
+function loadCfg(){try{const c=JSON.parse(localStorage.getItem("wrota.api.cfg")||"{}");$("proxyUrl").value=c.proxy||DEFAULT_PROXY;$("apiKey").value=c.key||""}catch{$("proxyUrl").value=DEFAULT_PROXY}}
 async function fetchTimeout(url,opts={},ms=45000){
-  const ac=new AbortController();
-  const t=setTimeout(()=>ac.abort(),ms);
-  try{return await fetch(url,{...opts,signal:ac.signal});}
-  finally{clearTimeout(t);}
+  const ac=new AbortController();const t=setTimeout(()=>ac.abort(),ms);
+  try{return await fetch(url,{...opts,signal:ac.signal})}finally{clearTimeout(t)}
 }
-async function rateLimitGate(){
-  const now=Date.now();
-  const wait=Math.max(0,MIN_REQUEST_GAP_MS-(now-lastRequestAt));
-  if(wait)await sleep(wait);
-  lastRequestAt=Date.now();
-}
-async function requestViaProxy(targetUrl,accept="application/json",expect="json"){
-  let lastErr;
-  for(let attempt=0;attempt<=MAX_API_RETRIES;attempt++){
-    await rateLimitGate();
-    const res=await fetchTimeout(proxyUrl(targetUrl),{headers:headers(accept)});
-    if(res.status===429){
-      const retryAfter=Number(res.headers.get("Retry-After")||0);
-      const backoff=(retryAfter?retryAfter*1000:700*(attempt+1));
-      log("429 throttle",{attempt:attempt+1,wait_ms:backoff});
-      await sleep(backoff);
-      continue;
-    }
-    if(!res.ok){
-      const txt=await res.text().catch(()=>"");
-      lastErr=new Error(`http ${res.status} ${txt.slice(0,120)}`);
-      if(res.status>=500&&attempt<MAX_API_RETRIES){
-        await sleep(600*(attempt+1));
-        continue;
-      }
-      throw lastErr;
-    }
-    if(expect==="text")return await res.text();
-    if(expect==="blob")return await res.blob();
-    const text=await res.text();
-    try{return JSON.parse(text);}
-    catch{return {raw:text};}
-  }
-  throw lastErr||new Error("request failed");
-}
-async function lztJson(path,params={}){
-  const u=new URL(`${API_BASE}${path}`);
+async function gate(){const wait=Math.max(0,MIN_GAP-(Date.now()-lastReq));if(wait)await sleep(wait);lastReq=Date.now()}
+async function api(path,params={}){
+  const u=new URL(API_BASE+path);
   Object.entries(params).forEach(([k,v])=>{
     if(v===undefined||v===null||v==="")return;
     if(Array.isArray(v))v.forEach(x=>u.searchParams.append(k,x));
     else u.searchParams.append(k,v);
   });
-  log("api request",{path,order:params.order,order_by:params.order_by,page:params.page});
-  return await requestViaProxy(u.toString(),"application/json","json");
-}
-async function lztText(url){
-  return await requestViaProxy(url,"text/html,*/*","text");
-}
-async function lztBlob(url){
-  return await requestViaProxy(url,"image/avif,image/webp,image/apng,image/*,*/*;q=0.8","blob");
-}
-function imgEndpoint(id,type){return `${WEB_BASE}/${id}/image?type=${type}`;}
-function imgProxyEndpoint(id,type){return proxyUrl(imgEndpoint(id,type));}
-
-async function loadImage(img,id,type){
-  if(!$("loadImages").checked)return;
-
-  try{
-    img.closest(".imgwrap")?.classList.add("loading");
-    const blob=await lztBlob(imgEndpoint(id,type));
-    if(!blob.type.startsWith("image/"))throw new Error(`not image ${blob.type||"unknown"}`);
-    const old=blobUrls.get(img.id);
-    if(old)URL.revokeObjectURL(old);
-    const url=URL.createObjectURL(blob);
-    blobUrls.set(img.id,url);
-    img.src=url;
-    img.dataset.hosted="page-blob";
-    img.closest(".imgwrap")?.classList.remove("loading","failed");
-  }catch(e){
-    img.closest(".imgwrap")?.classList.remove("loading");
-    img.closest(".imgwrap")?.classList.add("failed");
-    if(!img.dataset.failCounted){
-      img.dataset.failCounted="1";
-      imgFails++;
-    }
-    log("image hosting failed",{id,type,error:e.message});
-    renderStats();
+  let last;
+  for(let attempt=0;attempt<=MAX_RETRIES;attempt++){
+    await gate();reqCount++;renderStats();
+    const res=await fetchTimeout(proxyUrl(u.toString()),{headers:headers()});
+    if(res.status===429){const wait=Number(res.headers.get("Retry-After")||0)*1000 || 700*(attempt+1);log("429 retry",{wait});await sleep(wait);continue}
+    const text=await res.text();
+    if(!res.ok){last=new Error(`HTTP ${res.status}: ${text.slice(0,140)}`);if(res.status>=500){await sleep(600*(attempt+1));continue}throw last}
+    try{return JSON.parse(text)}catch{return {raw:text}}
   }
+  throw last||new Error("API failed");
 }
-window.__imgFail=function(img){
-  const box=img.closest(".imgwrap");
-  if(img.dataset.failCounted)return;
-  img.dataset.failCounted="1";
-  imgFails++;
-  box?.classList.add("failed");
-  renderStats();
-};
 
-function canonicalParam(k){
-  const s=decodeURIComponent(String(k||"")).toLowerCase();
-  if(s.startsWith("skin"))return"skin[]";
-  if(s.startsWith("pickaxe"))return"pickaxe[]";
-  if(s.startsWith("dance")||s.startsWith("emote"))return"dance[]";
-  if(s.startsWith("glider"))return"glider[]";
-  return"";
-}
-function inferParam(id){
-  const s=String(id).toLowerCase();
-  if(s.startsWith("pickaxe"))return"pickaxe[]";
-  if(s.includes("athena_commando")||s.includes("commando"))return"skin[]";
-  return"skin[]";
-}
-function labelFor(param,id){
-  const s=String(id).toLowerCase();
-  if(param==="pickaxe[]"&&s.includes("lockjaw_og"))return"Raider’s Revenge OG Style";
-  if(s.includes("030_athena_commando_m_halloween_og"))return"OG Skull Trooper / Purple Skull";
-  if(s.includes("029_athena_commando_f_halloween_og"))return"OG Ghoul Trooper / Pink Ghoul";
-  if(s.includes("028_athena_commando_f_og"))return"Renegade Raider OG Style";
-  if(s.includes("017_athena_commando_m_og"))return"Aerial Assault Trooper OG Style";
-  return `${param} ${id}`;
-}
-function addTarget(list,param,id){
-  const clean=decodeURIComponent(String(id||"")).trim().replace(/^cid_/i,"").split(/[&#]/)[0];
-  if(!param||!clean)return;
-  if(list.some(t=>t.param===param&&t.id===clean))return;
-  list.push({param,id:clean,label:labelFor(param,clean)});
-}
+function canonicalParam(k){const s=decodeURIComponent(String(k||"")).toLowerCase();if(s.startsWith("skin"))return"skin[]";if(s.startsWith("pickaxe"))return"pickaxe[]";if(s.startsWith("dance")||s.startsWith("emote"))return"dance[]";if(s.startsWith("glider"))return"glider[]";return""}
+function inferParam(id){const s=String(id).toLowerCase();if(s.startsWith("pickaxe"))return"pickaxe[]";if(s.includes("athena_commando")||s.includes("commando"))return"skin[]";return"skin[]"}
+function labelFor(param,id){const s=String(id).toLowerCase();if(param==="pickaxe[]"&&s.includes("lockjaw_og"))return"Raider’s Revenge OG Style";if(s.includes("030_athena_commando_m_halloween_og"))return"OG Skull Trooper / Purple Skull";if(s.includes("029_athena_commando_f_halloween_og"))return"OG Ghoul Trooper / Pink Ghoul";if(s.includes("028_athena_commando_f_og"))return"Renegade Raider OG Style";if(s.includes("017_athena_commando_m_og"))return"Aerial Assault Trooper OG Style";return`${param} ${id}`}
+function addTarget(list,param,id){const clean=decodeURIComponent(String(id||"")).trim().replace(/^cid_/i,"").split(/[&#]/)[0];if(!param||!clean)return;if(list.some(t=>t.param===param&&t.id===clean))return;list.push({param,id:clean,label:labelFor(param,clean)})}
 function parseTargets(text){
   const out=[];const raw=String(text||"");
-  try{
-    if(raw.includes("http")){
-      const u=new URL(raw);
-      for(const[k,v] of u.searchParams.entries()){
-        const p=canonicalParam(k);
-        if(p)addTarget(out,p,v);
-      }
-    }
-  }catch{}
-  const dec=decodeURIComponent(raw);
-  let m;const re=/(skin|pickaxe|dance|emote|glider)(?:\[\]|%5B%5D)?\s*=\s*([a-zA-Z0-9_'’-]+)/gi;
+  try{if(raw.includes("http")){const u=new URL(raw);for(const[k,v]of u.searchParams.entries()){const p=canonicalParam(k);if(p)addTarget(out,p,v)}}}catch{}
+  const dec=decodeURIComponent(raw);let m;const re=/(skin|pickaxe|dance|emote|glider)(?:\[\]|%5B%5D)?\s*=\s*([a-zA-Z0-9_'’-]+)/gi;
   while((m=re.exec(dec)))addTarget(out,canonicalParam(m[1]),m[2]);
-  dec.split(/[\s,;|]+/).forEach(tok=>{
-    const t=tok.trim();
-    if(!t||t.includes("=")||t.includes("http"))return;
-    if(/^[a-zA-Z0-9_'’-]+$/.test(t)&&(t.includes("athena")||t.includes("pickaxe")||t.includes("commando")))addTarget(out,inferParam(t),t);
-  });
+  dec.split(/[\s,;|]+/).forEach(tok=>{const t=tok.trim();if(!t||t.includes("=")||t.includes("http"))return;if(/^[a-zA-Z0-9_'’-]+$/.test(t)&&(t.includes("athena")||t.includes("pickaxe")||t.includes("commando")))addTarget(out,inferParam(t),t)});
   return out;
 }
 function renderTargets(){
   $("targetCount").textContent=targets.length;
-  $("targetList").innerHTML=targets.map((t,i)=>`<span class="target-chip"><code>${esc(t.param)}</code>${esc(t.label)}<button data-rm="${i}">x</button></span>`).join("");
-  document.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{targets.splice(Number(b.dataset.rm),1);renderTargets();});
+  $("targetList").innerHTML=targets.map((t,i)=>`<span class="chip"><code>${esc(t.param)}</code>${esc(t.label)}<button data-rm="${i}">x</button></span>`).join("");
+  document.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{targets.splice(Number(b.dataset.rm),1);renderTargets()});
 }
-function idOf(item){
-  const raw=item?.item_id??item?.itemId??item?.account_id??item?.accountId??item?.id??"";
-  return /^\d+$/.test(String(raw))?String(raw):"";
-}
+
+function known(v){return v!==undefined&&v!==null&&v!==""&&String(v).toLowerCase()!=="unknown"}
+function idOf(item){const raw=item?.item_id??item?.itemId??item?.account_id??item?.accountId??item?.id??"";return /^\d+$/.test(String(raw))?String(raw):""}
 function isListing(item){
   if(!item||typeof item!=="object")return false;
   const id=idOf(item);if(!id)return false;
@@ -222,465 +87,203 @@ function isListing(item){
 function extractItems(data){
   const out=[];const seen=new Set();
   function walk(v){
-    if(!v)return;
-    if(Array.isArray(v)){v.forEach(walk);return;}
-    if(typeof v!=="object")return;
-    if(isListing(v)){const id=idOf(v);if(!seen.has(id)){seen.add(id);out.push(v);}}
-    for(const[k,n]of Object.entries(v)){
-      if(/^\d+$/.test(k)&&n&&typeof n==="object"&&!Array.isArray(n)&&!idOf(n))n.item_id=k;
-      if(["items","data","results","list","accounts","market_items","response","values"].includes(k)||Array.isArray(n)||/^\d+$/.test(k))walk(n);
-    }
+    if(!v)return;if(Array.isArray(v)){v.forEach(walk);return}if(typeof v!=="object")return;
+    if(isListing(v)){const id=idOf(v);if(!seen.has(id)){seen.add(id);out.push(v)}}
+    for(const[k,n]of Object.entries(v)){if(/^\d+$/.test(k)&&n&&typeof n==="object"&&!Array.isArray(n)&&!idOf(n))n.item_id=k;if(["items","data","results","list","accounts","market_items","response","values"].includes(k)||Array.isArray(n)||/^\d+$/.test(k))walk(n)}
   }
   walk(data);return out;
 }
-function known(v){return v!==undefined&&v!==null&&v!==""&&String(v).toLowerCase()!=="unknown";}
 function firstDeep(v,keys){
-  let found="";
-  const seen=new WeakSet();
-  function walk(x){
-    if(found||!x||typeof x!=="object"||seen.has(x))return;
-    seen.add(x);
-    if(Array.isArray(x)){x.forEach(walk);return;}
-    for(const k of keys){if(x[k]!==undefined&&x[k]!==null&&x[k]!==""){found=x[k];return;}}
-    Object.values(x).forEach(walk);
-  }
+  let found="";const seen=new WeakSet();
+  function walk(x){if(found||!x||typeof x!=="object"||seen.has(x))return;seen.add(x);if(Array.isArray(x)){x.forEach(walk);return}for(const k of keys){if(x[k]!==undefined&&x[k]!==null&&x[k]!==""){found=x[k];return}}Object.values(x).forEach(walk)}
   walk(v);return found;
 }
-function titleNum(t,patterns){for(const p of patterns){const m=String(t||"").match(p);if(m)return m[1];}return"";}
-function boolIcon(v){
-  const s=String(v??"").toLowerCase();
-  if(typeof v==="boolean")return v?"YES":"NO";
-  if(s.includes("same"))return"SAME";
-  if(s.includes("changeable")||["1","yes","true"].includes(s))return"YES";
-  if(s.includes("no email")||s.includes("without email")||["0","no","false"].includes(s))return"NO";
-  return"UNK";
-}
-function dateVal(v){
-  if(!known(v))return null;
-  const raw=String(v).trim();
+function textDeep(v,seen=new WeakSet()){if(v==null)return"";if(["string","number","boolean"].includes(typeof v))return String(v);if(typeof v!=="object"||seen.has(v))return"";seen.add(v);return Object.values(v).map(x=>textDeep(x,seen)).join(" ")}
+function titleNum(t,patterns){for(const p of patterns){const m=String(t||"").match(p);if(m)return m[1]}return""}
+function num(v){const m=String(v??"").match(/-?\d+(\.\d+)?/);return m?Number(m[0]):null}
+function price(v){const n=num(v);return n===null?"Unknown":`$${n.toFixed(2)}`}
+function bool(v){const s=String(v??"").toLowerCase();if(typeof v==="boolean")return v?"YES":"NO";if(s.includes("same"))return"SAME";if(s.includes("changeable")||["1","yes","true"].includes(s))return"YES";if(s.includes("no email")||s.includes("without email")||["0","no","false"].includes(s))return"NO";return"UNK"}
+function dateVal(v){if(!known(v))return null;const raw=String(v).trim();if(typeof v==="number"||/^\d{10,13}$/.test(raw)){const n=Number(raw);const d=new Date(n>1e11?n:n*1000);return isNaN(d)?null:d}const d=new Date(raw.replace(/\bat\b/i,"").replace(/\s+/g," ").trim());return isNaN(d)?null:d}
+function dateText(v){const d=dateVal(v);return d?d.toISOString().slice(0,16).replace("T"," "):"Unknown"}
+function uploadOf(r){return r.uploaded!=="Unknown"?r.uploaded:(r.updated!=="Unknown"?r.updated:"Unknown")}
+function uploadMs(r){const d=dateVal(uploadOf(r));return d?d.getTime():-Infinity}
+function age(r){const ms=uploadMs(r);if(ms===-Infinity)return"Unknown";const diff=Date.now()-ms;const m=Math.floor(Math.abs(diff)/60000),h=Math.floor(m/60),d=Math.floor(h/24);let t=m<1?"now":m<60?`${m}m`:h<48?`${h}h`:`${d}d`;return diff<0?`in ${t}`:`${t} ago`}
 
-  // LZT often returns Unix timestamps as either numbers or numeric strings.
-  if(typeof v==="number" || /^\d{10,13}$/.test(raw)){
-    const n=Number(raw);
-    const d=new Date(n>1e11?n:n*1000);
-    return isNaN(d)?null:d;
-  }
-
-  // Some pages expose "Jul 9, 2026 at 10:14 PM" style cached titles.
-  const cleaned=raw.replace(/\bat\b/i,"").replace(/\s+/g," ").trim();
-  const d=new Date(cleaned);
-  return isNaN(d)?null:d;
-}
-function niceDate(v){const d=dateVal(v);return d?d.toISOString().slice(0,10):"Unknown";}
-function niceDateTime(v){
-  const d=dateVal(v);
-  if(!d)return "Unknown";
-  return d.toISOString().slice(0,16).replace("T"," ");
-}
-function uploadDate(r){
-  return r.uploaded!=="Unknown" ? r.uploaded : (r.updated!=="Unknown" ? r.updated : "Unknown");
-}
-function uploadMs(r){
-  const d=dateVal(uploadDate(r));
-  return d ? d.getTime() : -Infinity;
-}
-function newestDistance(r){
-  const ms=uploadMs(r);
-  return ms===-Infinity ? Infinity : Math.abs(Date.now()-ms);
-}
-function ageText(r){
-  const ms=uploadMs(r);
-  if(ms===-Infinity)return "Unknown";
-  const diff=Date.now()-ms;
-  const abs=Math.abs(diff);
-  const future=diff<0;
-  const mins=Math.floor(abs/60000);
-  const hours=Math.floor(mins/60);
-  const days=Math.floor(hours/24);
-  let txt;
-  if(mins<1)txt="now";
-  else if(mins<60)txt=`${mins}m`;
-  else if(hours<48)txt=`${hours}h`;
-  else txt=`${days}d`;
-  return future ? `in ${txt}` : `${txt} ago`;
-}
-function num(v){const m=String(v??"").match(/-?\d+(\.\d+)?/);return m?Number(m[0]):null;}
-function priceText(v){const n=num(v);return n===null?"Unknown":`$${n.toFixed(2)}`;}
-
-function parseHtml(html){
-  const f={};
-  const price=html.match(/id=["']price["'][^>]*data-value=["']([^"']+)["']/i);if(price)f.price=price[1];
-  const title=html.match(/<span[^>]*class=["'][^"']*title-account[^"']*["'][^>]*>([\s\S]*?)<\/span>/i);if(title)f.title=title[1].replace(/<[^>]+>/g,"").trim();
-  const pub=html.match(/class=["'][^"']*published_date[^"']*["'][^>]*data-value=["']([^"']+)["']/i)
-    || html.match(/published_date[^>]*data-value=["']([^"']+)["']/i)
-    || html.match(/data-cachedtitle=["']([^"']*(?:\d{4}|Yesterday|Today)[^"']*)["'][^>]*>[^<]*(?:Yesterday|Today|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/i);
-  if(pub){
-    const raw=pub[1];
-    f.uploaded=/^\d+$/.test(String(raw))?Number(raw):raw;
-  }
-  const upd=html.match(/class=["'][^"']*refreshed_date[^"']*["'][^>]*data-value=["']([^"']+)["']/i)
-    || html.match(/refreshed_date[^>]*data-value=["']([^"']+)["']/i);
-  if(upd)f.updated=Number(upd[1]);
-  const seller=html.match(/data-user=["'][^,"']+,\s*([^"']+)["']/i);if(seller)f.seller=seller[1].trim();
-  return f;
-}
-function normalize(summary,detail={},labels=[],rank=0){
-  const id=idOf(summary)||idOf(detail);
-  const merged={...summary,...(detail?.item||detail?.data||detail||{})};
-  const title=summary.title||summary.item_title||merged.title||merged.item_title||merged.name||`Listing ${id}`;
-  const sellerObj=summary.seller||merged.seller||summary.user||merged.user||{};
-  let skins=summary.skin_count??summary.skins_count??merged.skin_count??merged.skins_count??firstDeep({summary,detail},["skin_count","skins_count","outfits_count","fortnite_skins_count"]);
+function norm(summary,detail={},labels=[],rank=0){
+  const root=detail?.item||detail?.data||detail?.account||detail?.response||detail||{};
+  const m={...summary,...root};
+  const id=idOf(summary)||idOf(m);
+  const title=summary.title||summary.item_title||m.title||m.item_title||m.name||`Listing ${id}`;
+  const sellerObj=summary.seller||m.seller||summary.user||m.user||{};
+  let skins=summary.skin_count??summary.skins_count??m.skin_count??m.skins_count??m.skins??firstDeep({summary,detail},["skin_count","skins_count","outfits_count","fortnite_skins_count"]);
   if(!known(skins))skins=titleNum(title,[/(\d+)\s*skins?/i,/(\d+)\s*outfits?/i]);
-  let level=summary.season_level??summary.level??merged.season_level??merged.level??firstDeep({summary,detail},["season_level","account_level","fortnite_level","level"]);
+  let level=summary.season_level??summary.level??m.season_level??m.level??firstDeep({summary,detail},["season_level","account_level","fortnite_level","level"]);
   if(!known(level))level=titleNum(title,[/level\s*[:#-]?\s*(\d+)/i,/lvl\s*[:#-]?\s*(\d+)/i]);
-  let email=summary.email_changeable??merged.email_changeable??merged.change_email??firstDeep({summary,detail},["email_changeable","change_email","changeable_email","can_change_email"]);
-  if(!known(email)){const s=title.toLowerCase();email=s.includes("same email")?"same":s.includes("changeable email")?"yes":s.includes("no email")?"no":"Unknown";}
+  let email=summary.email_changeable??m.email_changeable??m.change_email??firstDeep({summary,detail},["email_changeable","change_email","changeable_email","can_change_email"]);
+  if(!known(email)){const s=title.toLowerCase();email=s.includes("same email")?"same":s.includes("changeable email")?"yes":s.includes("no email")?"no":"Unknown"}
   return {
     id,rank,title,
-    price:summary.price??summary.price_usd??merged.price??merged.price_usd??merged.cost??"",
-    seller:typeof sellerObj==="string"?sellerObj:(sellerObj.username||sellerObj.name||summary.seller_username||merged.username||"Unknown"),
-    country:summary.country||merged.country||summary.country_code||merged.country_code||merged.origin||"Unknown",
+    price:summary.price??summary.price_usd??m.price??m.price_usd??m.cost??m.amount??"",
+    seller:typeof sellerObj==="string"?sellerObj:(sellerObj.username||sellerObj.name||summary.seller_username||m.username||"Unknown"),
+    country:summary.country||m.country||summary.country_code||m.country_code||m.origin||"Unknown",
     skins:known(skins)?skins:"Unknown",
     level:known(level)?level:"Unknown",
     email,
-    uploaded:summary.uploaded_at||summary.upload_date||summary.uploaded||summary.created_at||summary.created_date||summary.published_at||summary.published_date||summary.pdate_upload||summary.pdate||merged.uploaded_at||merged.upload_date||merged.uploaded||merged.created_at||merged.created_date||merged.published_at||merged.published_date||merged.pdate||"Unknown",
-    updated:summary.updated_at||summary.refreshed_at||summary.refreshed_date||summary.last_update||merged.updated_at||merged.refreshed_at||merged.refreshed_date||merged.last_update||"Unknown",
+    uploaded:summary.uploaded_at||summary.upload_date||summary.uploaded||summary.created_at||summary.created_date||summary.published_at||summary.published_date||summary.pdate_upload||summary.pdate||m.uploaded_at||m.upload_date||m.uploaded||m.created_at||m.created_date||m.published_at||m.published_date||m.pdate||"Unknown",
+    updated:summary.updated_at||summary.refreshed_at||summary.refreshed_date||summary.last_update||m.updated_at||m.refreshed_at||m.refreshed_date||m.last_update||"Unknown",
+    lastActivity:summary.last_activity||summary.last_seen||m.last_activity||m.last_seen||"Unknown",
+    views:summary.views||summary.view_count||m.views||m.view_count||"",
+    itemOrigin:summary.item_origin||m.item_origin||summary.origin||m.origin||"",
+    guarantee:summary.guarantee||m.guarantee||summary.warranty||m.warranty||"",
     labels:[...new Set(labels)],
+    apiText:textDeep({summary,detail}),
     raw:{summary,detail}
   };
 }
-function applyHtml(r,html){
-  const f=parseHtml(html);
-  if(f.title)r.title=f.title;
-  if(f.price)r.price=f.price;
-  if(f.seller)r.seller=f.seller;
-  if(f.uploaded)r.uploaded=f.uploaded;
-  if(f.updated)r.updated=f.updated;
+async function apiDetail(r){
+  const paths=[`/fortnite/${r.id}`,`/item/${r.id}`,`/items/${r.id}`,`/${r.id}`];
+  for(const path of paths){
+    try{
+      const data=await api(path,{locale:"en",currency:"usd",fields_include:"*"});
+      if(data&&typeof data==="object"&&!data.raw){
+        const nr=norm({item_id:r.id},data,r.labels,r.rank);
+        Object.assign(r,nr,{raw:{summary:r.raw.summary,detail:data}});
+        log("detail ok",{id:r.id,path});
+        return r;
+      }
+    }catch(e){log("detail miss",{id:r.id,path,error:e.message})}
+  }
   return r;
 }
 
-function filter(){
-  const q=$("q").value.toLowerCase().trim();
-  const min=num($("minPrice").value),max=num($("maxPrice").value);
-  const multi=$("multiOnly").checked;
-  return results.filter(r=>{
-    const text=[r.title,r.seller,r.country,r.skins,r.level,...r.labels].join(" ").toLowerCase();
-    const p=num(r.price);
-    if(q&&!text.includes(q))return false;
-    if(min!==null&&(p===null||p<min))return false;
-    if(max!==null&&(p===null||p>max))return false;
-    if(multi&&r.labels.length<2)return false;
-    return true;
-  });
-}
-function sortList(list){
-  const s=$("sort").value, order=$("order").value;
-  const arr=list.slice();
-
-  const hasDate=x=>uploadMs(x)!==-Infinity;
-
-  // Real newest: upload timestamp closest to the current browser/system time.
-  // Unknown upload dates always sink below known upload dates.
-  const newestSort=(a,b)=>{
-    if(hasDate(a)!==hasDate(b))return hasDate(a)?-1:1;
-    return newestDistance(a)-newestDistance(b) || (uploadMs(b)-uploadMs(a)) || a.rank-b.rank;
-  };
-  const oldestSort=(a,b)=>{
-    if(hasDate(a)!==hasDate(b))return hasDate(a)?-1:1;
-    return uploadMs(a)-uploadMs(b) || a.rank-b.rank;
-  };
-
-  if(s==="market"||s==="newest"){
-    if(order==="price_to_up")arr.sort((a,b)=>(num(a.price)??Infinity)-(num(b.price)??Infinity));
-    else if(order==="price_to_down")arr.sort((a,b)=>(num(b.price)??-Infinity)-(num(a.price)??-Infinity));
-    else if(order==="pdate_to_up_upload"||order==="pdate_to_up")arr.sort(oldestSort);
-    else arr.sort(newestSort);
-  }
-  if(s==="price_asc")arr.sort((a,b)=>(num(a.price)??Infinity)-(num(b.price)??Infinity));
-  if(s==="price_desc")arr.sort((a,b)=>(num(b.price)??-Infinity)-(num(a.price)??-Infinity));
-  if(s==="matches_desc")arr.sort((a,b)=>b.labels.length-a.labels.length);
-  return arr;
-}
-function visible(){return sortList(filter());}
-
-function message(r){
-  return `New Fortnite listing on LZT Market
-
-Skin Count: ${r.skins}
-Exclusives: ${r.labels.join(", ")}
-Email Changeable: ${boolIcon(r.email)}
-
-Title: ${r.title}
-Seller: ${r.seller}
-Price: ${priceText(r.price)}
-Season Level: ${r.level}
-Country: ${r.country}
-Upload Date: ${niceDateTime(uploadDate(r))}
-System-Time Distance: ${ageText(r)}
-Link: https://lzt.market/${r.id}/`;
-}
-function imgBox(r,type,label){
-  const imgId=`img-${type}-${r.id}`;
-  return `<div class="imgbox">
-    <div class="imgbox-head">
-      <b>${label}</b>
-      <span class="hosted-badge">HOSTED_ON_PAGE</span>
-    </div>
-    <div class="imgwrap">
-      <img id="${esc(imgId)}" data-id="${esc(r.id)}" data-type="${esc(type)}" alt="${esc(label)}" onerror="window.__imgFail(this)">
-      <span class="imgfail">image could not be hosted in this page</span>
-    </div>
-  </div>`;
-}
-function card(r){
-  const msg=message(r);
-  return `<article class="card">
-    <div class="card-head">
-      <div>
-        <div class="prompt"><span>C:\\WROTA\\LISTING&gt;</span> ${esc(r.id)}</div>
-        <div class="upload-stamp">UPLOAD_DATE: ${esc(niceDateTime(uploadDate(r)))} · ${esc(ageText(r))}</div>
-        <h3>${esc(r.title)}</h3>
-        <div class="badges">${r.labels.map(x=>`<span>${esc(x)}</span>`).join("")}</div>
-      </div>
-      <div class="price">${esc(priceText(r.price))}</div>
-    </div>
-    <div class="info">
-      <div><span>SKINS</span><b>${esc(r.skins)}</b></div>
-      <div><span>EMAIL</span><b>${esc(boolIcon(r.email))}</b></div>
-      <div><span>LEVEL</span><b>${esc(r.level)}</b></div>
-      <div><span>COUNTRY</span><b>${esc(r.country)}</b></div>
-      <div><span>UPLOAD DATE</span><b>${esc(niceDateTime(uploadDate(r)))}</b></div>
-      <div><span>AGE</span><b>${esc(ageText(r))}</b></div>
-      <div><span>MATCHES</span><b>${r.labels.length}</b></div>
-    </div>
-    <div class="card-body"><pre class="msg">${esc(msg)}</pre></div>
-    <details class="locker" open><summary>SITE_HOSTED_LOCKER_IMAGES</summary><div class="locker-grid">${imgBox(r,"skins","skins")}${imgBox(r,"pickaxes","pickaxes")}</div></details>
-    <div class="card-actions">
-      <a class="btn" href="https://lzt.market/${esc(r.id)}/" target="_blank">OPEN</a>
-      <button class="btn" data-copy="${esc(msg)}">COPY</button>
-      <button class="btn" data-save="${esc(r.id)}">SAVE</button>
-    </div>
-    <details class="raw"><summary>RAW_JSON</summary><pre>${esc(JSON.stringify(r,null,2))}</pre></details>
-  </article>`;
-}
-function renderStats(){
-  const vis=visible();
-  $("statShown").textContent=vis.length;
-  $("statUnique").textContent=results.length;
-  $("statHits").textContent=results.reduce((a,r)=>a+r.labels.length,0);
-  $("statImgFail").textContent=imgFails;
-  $("statSaved").textContent=saved.length;
-}
-function renderFeed(){
-  renderStats();
-  const list=visible();
-  const box=$("feed");
-  if(!list.length){
-    box.className="empty";
-    box.innerHTML=`<pre>C:\\WROTA&gt; no visible accounts</pre>`;
-    return;
-  }
-  box.className=compact?"cards compact":"cards";
-  box.innerHTML=list.map(card).join("");
-  wire(box);
-  if($("loadImages").checked)hydrateImages(box);
-}
-function renderSaved(){
-  $("statSaved").textContent=saved.length;
-  const box=$("saved");
-  if(!saved.length){box.className="empty small";box.innerHTML="<pre>no saved cases</pre>";return;}
-  box.className="cards compact";
-  box.innerHTML=saved.map(card).join("");
-  wire(box);
-}
-function hydrateImages(root=document){
-  root.querySelectorAll("img[data-id]").forEach(img=>{
-    if(img.dataset.loaded)return;
-    img.dataset.loaded="1";
-    loadImage(img,img.dataset.id,img.dataset.type);
-  });
-}
-function wire(root=document){
-  root.querySelectorAll("[data-copy]").forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.copy);toast("copied")}catch{toast("copy failed")}});
-  root.querySelectorAll("[data-save]").forEach(b=>b.onclick=()=>{const r=results.find(x=>x.id===b.dataset.save);if(!r)return;if(!saved.some(x=>x.id===r.id))saved.unshift(r);saved=saved.slice(0,100);localStorage.setItem("wrota.cmd.saved",JSON.stringify(saved));renderSaved();renderStats();});
-}
-function progress(done,total){
-  $("progress").classList.remove("hidden");
-  const p=total?Math.round(done/total*100):0;
-  $("progressText").textContent=p+"%";
-  $("progressBar").style.width=p+"%";
-}
-async function pool(tasks,limit,onDone){
-  let i=0,done=0;
-  async function worker(){
-    while(i<tasks.length){
-      const idx=i++;
-      let res;
-      try{res=await tasks[idx]();}catch(e){res={error:e};}
-      done++;onDone(done,tasks.length,idx,res);
-    }
-  }
-  await Promise.all(Array.from({length:Math.min(limit,tasks.length)},worker));
-}
-function paramsFor(t,page){
+function params(t,page){
   const ord=$("order").value;
-  const p={
-    page,
-    order:ord,       // docs resource ordering parameter
-    order_by:ord,    // compatibility fallback for observed marketplace URLs
-    currency:"usd",
-    locale:"en"
-  };
-  const q=$("q")?.value?.trim();
-  const min=num($("minPrice")?.value);
-  const max=num($("maxPrice")?.value);
-  if(q)p.title=q;
-  if(min!==null)p.pmin=min;
-  if(max!==null)p.pmax=max;
+  const p={page,order:ord,order_by:ord,currency:"usd",locale:"en",fields_include:"*"};
+  const q=$("q").value.trim();const min=num($("minPrice").value);const max=num($("maxPrice").value);
+  if(q)p.title=q;if(min!==null)p.pmin=min;if(max!==null)p.pmax=max;
   p[t.param]=t.id;
   return p;
 }
-
-async function enrichApi(r){
-  // API-first detail enrichment. Different LZT deployments have used different detail paths,
-  // so try cheap known candidates and keep the first usable JSON response.
-  const candidates=[
-    `/${r.id}`,
-    `/item/${r.id}`,
-    `/items/${r.id}`,
-    `/fortnite/${r.id}`
-  ];
-  for(const path of candidates){
-    try{
-      const data=await lztJson(path,{locale:"en",currency:"usd"});
-      if(data && typeof data==="object" && !data.raw){
-        r.raw.detail_api=data;
-        const detailNorm=normalize({item_id:r.id},data,r.labels,r.rank);
-        Object.assign(r,{
-          title:detailNorm.title||r.title,
-          price:detailNorm.price||r.price,
-          seller:detailNorm.seller||r.seller,
-          country:detailNorm.country||r.country,
-          skins:detailNorm.skins||r.skins,
-          level:detailNorm.level||r.level,
-          email:detailNorm.email||r.email,
-          uploaded:detailNorm.uploaded!=="Unknown"?detailNorm.uploaded:r.uploaded,
-          updated:detailNorm.updated!=="Unknown"?detailNorm.updated:r.updated
-        });
-        return r;
-      }
-    }catch(e){
-      // Keep quiet for 404-ish candidate misses; debug only.
-      log("detail candidate miss",{id:r.id,path,error:e.message});
-    }
-  }
-  return r;
+async function pool(tasks,limit,onDone){
+  let i=0,done=0;
+  async function worker(){while(i<tasks.length){const idx=i++;let r;try{r=await tasks[idx]()}catch(e){r={error:e}}done++;onDone(done,tasks.length,idx,r)}}
+  await Promise.all(Array.from({length:Math.max(1,Math.min(limit,tasks.length))},worker));
 }
+function filter(){
+  const q=$("q").value.toLowerCase().trim(), min=num($("minPrice").value), max=num($("maxPrice").value), multi=$("multiOnly").checked;
+  return results.filter(r=>{const txt=[r.title,r.seller,r.country,r.apiText,...r.labels].join(" ").toLowerCase();const p=num(r.price);if(q&&!txt.includes(q))return false;if(min!==null&&(p===null||p<min))return false;if(max!==null&&(p===null||p>max))return false;if(multi&&r.labels.length<2)return false;return true});
+}
+function sortList(list){
+  const s=$("sort").value, ord=$("order").value, arr=list.slice();
+  const has=x=>uploadMs(x)!==-Infinity;
+  const newest=(a,b)=>has(a)!==has(b)?(has(a)?-1:1):Math.abs(Date.now()-uploadMs(a))-Math.abs(Date.now()-uploadMs(b))||uploadMs(b)-uploadMs(a)||a.rank-b.rank;
+  if(s==="price_asc")arr.sort((a,b)=>(num(a.price)??Infinity)-(num(b.price)??Infinity));
+  else if(s==="price_desc")arr.sort((a,b)=>(num(b.price)??-Infinity)-(num(a.price)??-Infinity));
+  else if(s==="matches_desc")arr.sort((a,b)=>b.labels.length-a.labels.length);
+  else if(s==="skins_desc")arr.sort((a,b)=>(num(b.skins)??-Infinity)-(num(a.skins)??-Infinity));
+  else if(ord==="pdate_to_up_upload"||ord==="pdate_to_up")arr.sort((a,b)=>uploadMs(a)-uploadMs(b)||a.rank-b.rank);
+  else arr.sort(newest);
+  return arr;
+}
+function visible(){return sortList(filter())}
+function message(r){return`New Fortnite listing on LZT Market
 
+Skin Count: ${r.skins}
+Matches: ${r.labels.join(", ")}
+Email Changeable: ${bool(r.email)}
+
+Title: ${r.title}
+Seller: ${r.seller}
+Price: ${price(r.price)}
+Level: ${r.level}
+Country: ${r.country}
+Upload Date: ${dateText(uploadOf(r))}
+Age: ${age(r)}
+Link: https://lzt.market/${r.id}/`}
+function card(r){
+  const msg=message(r);
+  return `<article class="card">
+    <div class="cardhead">
+      <div><div class="cmd">C:\\WROTA\\LISTING&gt; ${esc(r.id)}</div><h3>${esc(r.title)}</h3><div class="badges">${r.labels.map(x=>`<span>${esc(x)}</span>`).join("")}</div></div>
+      <div class="price">${esc(price(r.price))}</div>
+    </div>
+    <div class="info">
+      <div><span>SKINS</span><b>${esc(r.skins)}</b></div>
+      <div><span>EMAIL</span><b>${esc(bool(r.email))}</b></div>
+      <div><span>LEVEL</span><b>${esc(r.level)}</b></div>
+      <div><span>COUNTRY</span><b>${esc(r.country)}</b></div>
+      <div><span>UPLOAD</span><b>${esc(dateText(uploadOf(r)))}</b></div>
+      <div><span>AGE</span><b>${esc(age(r))}</b></div>
+      <div><span>MATCHES</span><b>${r.labels.length}</b></div>
+      <div><span>VIEWS</span><b>${esc(r.views||"")}</b></div>
+    </div>
+    <div class="api-grid">
+      <div><span>SELLER</span><b>${esc(r.seller)}</b></div>
+      <div><span>ORIGIN</span><b>${esc(r.itemOrigin||"")}</b></div>
+      <div><span>GUARANTEE</span><b>${esc(r.guarantee||"")}</b></div>
+      <div><span>LAST ACTIVITY</span><b>${esc(dateText(r.lastActivity))}</b></div>
+    </div>
+    <pre class="message">${esc(msg)}</pre>
+    <div class="actions"><a class="button" href="https://lzt.market/${esc(r.id)}/" target="_blank">OPEN</a><button data-copy="${esc(msg)}">COPY</button><button data-save="${esc(r.id)}">SAVE</button></div>
+    ${$("includeRaw")?.checked?`<details class="raw"><summary>FULL API JSON</summary><pre>${esc(JSON.stringify(r.raw,null,2))}</pre></details>`:""}
+  </article>`;
+}
+function renderStats(){const v=visible();$("statShown").textContent=v.length;$("statUnique").textContent=results.length;$("statHits").textContent=results.reduce((a,r)=>a+r.labels.length,0);$("statReq").textContent=reqCount;$("statSaved").textContent=saved.length}
+function renderFeed(){renderStats();const v=visible();const box=$("feed");if(!v.length){box.className="empty";box.innerHTML="<h3>No visible listings</h3><p>Try relaxing filters or run another scan.</p>";return}box.className=compact?"cards compact":"cards";box.innerHTML=v.map(card).join("");wire(box)}
+function renderSaved(){const box=$("saved");$("statSaved").textContent=saved.length;if(!saved.length){box.className="empty small-empty";box.innerHTML="<h3>No saved listings</h3>";return}box.className="cards compact";box.innerHTML=saved.map(card).join("");wire(box)}
+function wire(root=document){
+  root.querySelectorAll("[data-copy]").forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.copy);log("copied")}catch{log("copy failed")}});
+  root.querySelectorAll("[data-save]").forEach(b=>b.onclick=()=>{const r=results.find(x=>x.id===b.dataset.save);if(!r)return;if(!saved.some(x=>x.id===r.id))saved.unshift(r);saved=saved.slice(0,100);localStorage.setItem("wrota.api.saved",JSON.stringify(saved));renderSaved();renderStats()});
+}
+function prog(done,total){$("progress").classList.remove("hidden");const p=total?Math.round(done/total*100):0;$("progressText").textContent=p+"%";$("progressBar").style.width=p+"%"}
 async function scan(){
-  if(!targets.length){toast("no targets");return;}
-  results=[];imgFails=0;renderFeed();status("SCANNING");$("scanBtn").disabled=true;
-  const pages=Math.max(1,Math.min(30,Number($("pages").value)||4));
+  if(!targets.length){log("no targets");return}
+  results=[];reqCount=0;renderFeed();status("SCANNING");$("scanBtn").disabled=true;
+  const pages=Math.max(1,Math.min(50,Number($("pages").value)||5));
   const threads=Math.max(1,Math.min(8,Number($("threads").value)||3));
   const delay=Math.max(0,Math.min(15000,Number($("delay").value)||0));
   const tasks=[];
-  log("docs-aligned mode",{auth:"Authorization: Bearer via proxy", order:$("order").value, sent_params:["order","order_by"], throttle_ms:MIN_REQUEST_GAP_MS, retry_429:true});
   for(let page=1;page<=pages;page++){
     for(const target of targets){
-      tasks.push(async()=>{
-        if(delay)await sleep(delay);
-        const params=paramsFor(target,page);
-        const data=await lztJson("/fortnite",params);
-        return {target,page,items:extractItems(data)};
-      });
+      tasks.push(async()=>{if(delay)await sleep(delay);const data=await api("/fortnite",params(target,page));return{target,page,items:extractItems(data)}})
     }
   }
   const found=new Map();
   try{
+    log("scan start",{targets:targets.length,pages,order:$("order").value,api_only:true});
     await pool(tasks,threads,(done,total,idx,res)=>{
-      if(res.error){log("page error",{error:res.error.message});progress(done,total);return;}
-      for(const item of res.items){
-        const id=idOf(item);if(!id)continue;
-        const pack=found.get(id)||{summary:{},labels:[],rank:found.size};
-        pack.summary={...pack.summary,...item};
-        pack.labels=[...new Set([...pack.labels,res.target.label])];
-        found.set(id,pack);
-      }
-      results=[...found.entries()].map(([id,p])=>normalize(p.summary,{},p.labels,p.rank));
-      renderFeed();
-      progress(done,total);
+      if(res.error){log("page error",{error:res.error.message});prog(done,total);return}
+      for(const item of res.items){const id=idOf(item);if(!id)continue;const pack=found.get(id)||{summary:{},labels:[],rank:found.size};pack.summary={...pack.summary,...item};pack.labels=[...new Set([...pack.labels,res.target.label])];found.set(id,pack)}
+      results=[...found.values()].map(p=>norm(p.summary,{},p.labels,p.rank));renderFeed();prog(done,total)
     });
-
-    if($("enrich").checked){
-      const enrichTasks=results.map(r=>async()=>{
-        try{
-          await enrichApi(r);
-        }catch(e){log("api enrich failed",{id:r.id,error:e.message});}
-        try{
-          // HTML page is fallback for published_date/refreshed_date when API doesn't expose it.
-          const html=await lztText(`${WEB_BASE}/${r.id}/`);
-          applyHtml(r,html);
-        }catch(e){log("html enrich failed",{id:r.id,error:e.message});}
-        return r;
-      });
-      await pool(enrichTasks,Math.min(threads,3),(done,total,idx,res)=>{
-        renderFeed();
-        progress(done,total);
-      });
+    if($("apiDetails").checked&&results.length){
+      const detailTasks=results.map(r=>async()=>await apiDetail(r));
+      await pool(detailTasks,Math.min(threads,3),(done,total,idx,res)=>{if(res&&!res.error){const pos=results.findIndex(x=>x.id===res.id);if(pos>=0)results[pos]=res}renderFeed();prog(done,total)})
     }
-
-    renderFeed();
-    status("DONE");
-    log("scan complete",{unique:results.length,hits:results.reduce((a,r)=>a+r.labels.length,0)});
-  }catch(e){
-    status("ERROR");
-    log("scan failed",{error:e.message});
-  }finally{
-    $("scanBtn").disabled=false;
-    $("progress").classList.add("hidden");
-  }
+    renderFeed();status("DONE");log("scan complete",{unique:results.length,hits:results.reduce((a,r)=>a+r.labels.length,0),requests:reqCount});
+  }catch(e){status("ERROR");log("scan failed",{error:e.message})}
+  finally{$("scanBtn").disabled=false;$("progress").classList.add("hidden")}
 }
-async function test(){
-  try{
-    status("TESTING");
-    await lztJson("/",{locale:"en"});
-    await lztJson("/fortnite",{page:1,order:"pdate_to_down_upload",order_by:"pdate_to_down_upload",currency:"usd",locale:"en"});
-    status("READY");
-    toast("connection ok");
-  }catch(e){
-    status("ERROR");
-    log("test failed",{error:e.message});
-  }
-}
+async function test(){try{status("TESTING");await api("/",{locale:"en"});await api("/fortnite",{page:1,order:"pdate_to_down_upload",order_by:"pdate_to_down_upload",currency:"usd",locale:"en",fields_include:"*"});status("READY");log("api ok")}catch(e){status("ERROR");log("api test failed",{error:e.message})}}
+function exportJson(name,data){const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=name;a.click();URL.revokeObjectURL(url)}
 function bind(){
-  loadCfg();
-  try{saved=JSON.parse(localStorage.getItem("wrota.cmd.saved")||"[]")}catch{}
+  loadCfg();try{saved=JSON.parse(localStorage.getItem("wrota.api.saved")||"[]")}catch{}
   renderTargets();renderFeed();renderSaved();
-  $("showBtn").onclick=()=>{const show=$("apiKey").type==="password";$("apiKey").type=show?"text":"password";$("cookie").type=show?"text":"password";$("showBtn").textContent=show?"HIDE":"SHOW";};
-  $("testBtn").onclick=test;
-  $("saveBtn").onclick=()=>{saveCfg();toast("saved config")};
-  $("clearBtn").onclick=()=>{$("apiKey").value="";$("cookie").value="";$("proxyUrl").value=DEFAULT_PROXY;saveCfg();};
+  $("showBtn").onclick=()=>{const show=$("apiKey").type==="password";$("apiKey").type=show?"text":"password";$("showBtn").textContent=show?"HIDE":"SHOW"};
+  $("testBtn").onclick=test;$("saveBtn").onclick=()=>{saveCfg();log("saved config")};$("clearBtn").onclick=()=>{$("apiKey").value="";saveCfg()};
   $("scanBtn").onclick=scan;
-  $("addTargetBtn").onclick=()=>{parseTargets($("targetInput").value).forEach(t=>addTarget(targets,t.param,t.id));$("targetInput").value="";renderTargets();};
-  $("parseBulkBtn").onclick=()=>{parseTargets($("bulkTargets").value).forEach(t=>addTarget(targets,t.param,t.id));$("bulkTargets").value="";renderTargets();};
-  $("ogBtn").onclick=()=>{targets=[...DEFAULT_TARGETS];renderTargets();};
-  $("clearTargetsBtn").onclick=()=>{targets=[];renderTargets();};
-  ["q","minPrice","maxPrice","sort","multiOnly"].forEach(id=>$(id).addEventListener("input",renderFeed));
-  ["sort","multiOnly"].forEach(id=>$(id).addEventListener("change",renderFeed));
-  $("resetFiltersBtn").onclick=()=>{$("q").value="";$("minPrice").value="";$("maxPrice").value="";$("sort").value="market";$("multiOnly").checked=false;renderFeed();};
-  $("compactBtn").onclick=()=>{compact=!compact;$("compactBtn").textContent=compact?"CARDS":"COMPACT";renderFeed();};
-  $("copyBtn").onclick=async()=>{try{await navigator.clipboard.writeText(visible().map(message).join("\n\n---\n\n"));toast("copied filtered")}catch{toast("copy failed")}};
-  $("exportBtn").onclick=()=>exportJson("wrota-cmd-results.json",visible());
-  $("exportSavedBtn").onclick=()=>exportJson("wrota-cmd-saved.json",saved);
-  $("clearSavedBtn").onclick=()=>{saved=[];localStorage.setItem("wrota.cmd.saved","[]");renderSaved();renderStats();};
+  $("addTargetBtn").onclick=()=>{parseTargets($("targetInput").value).forEach(t=>addTarget(targets,t.param,t.id));$("targetInput").value="";renderTargets()};
+  $("parseBulkBtn").onclick=()=>{parseTargets($("bulkTargets").value).forEach(t=>addTarget(targets,t.param,t.id));$("bulkTargets").value="";renderTargets()};
+  $("ogBtn").onclick=()=>{targets=[...DEFAULT_TARGETS];renderTargets()};$("clearTargetsBtn").onclick=()=>{targets=[];renderTargets()};
+  ["q","minPrice","maxPrice","sort","multiOnly","includeRaw"].forEach(id=>$(id).addEventListener("input",renderFeed));
+  ["sort","multiOnly","includeRaw"].forEach(id=>$(id).addEventListener("change",renderFeed));
+  $("resetFiltersBtn").onclick=()=>{$("q").value="";$("minPrice").value="";$("maxPrice").value="";$("sort").value="api";$("multiOnly").checked=false;renderFeed()};
+  $("compactBtn").onclick=()=>{compact=!compact;$("compactBtn").textContent=compact?"CARDS":"COMPACT";renderFeed()};
+  $("copyBtn").onclick=async()=>{try{await navigator.clipboard.writeText(visible().map(message).join("\n\n---\n\n"));log("copied visible")}catch{log("copy failed")}};
+  $("exportBtn").onclick=()=>exportJson("wrota-api-listings.json",visible());
+  $("exportSavedBtn").onclick=()=>exportJson("wrota-api-saved.json",saved);
+  $("clearSavedBtn").onclick=()=>{saved=[];localStorage.setItem("wrota.api.saved","[]");renderSaved();renderStats()};
   $("clearLogBtn").onclick=()=>{$("debugLog").textContent=""};
-}
-function exportJson(name,data){
-  const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");
-  a.href=url;a.download=name;a.click();
-  URL.revokeObjectURL(url);
 }
 window.addEventListener("error",e=>log("script error",{message:e.message}));
 window.addEventListener("unhandledrejection",e=>log("request error",{message:e.reason?.message||String(e.reason)}));

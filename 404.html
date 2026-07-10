@@ -3,159 +3,193 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Wrota CMD Scanner // API-aligned</title>
-  <link rel="stylesheet" href="styles.css?v=cmd-1">
+  <title>Wrota API Console</title>
+  <link rel="stylesheet" href="styles.css?v=clean-1">
 </head>
 <body>
-  <div class="scanlines"></div>
-  <main class="terminal">
-    <header class="topbar">
-      <div>
-        <div class="prompt"><span>C:\WROTA&gt;</span> LZT_CHECKER.EXE</div>
-        <h1>Wrota CMD Scanner // API-aligned</h1>
-        <p>one mixed global feed · unique accounts · multi-match badges · docs-aligned API client</p>
+  <main class="app">
+    <header class="hero">
+      <div class="hero-copy">
+        <span class="kicker">API-only listing scanner</span>
+        <h1>Wrota API Console</h1>
+        <p>Clean global feed for Fortnite listings. No images, no page scraping, no clutter — just API data, matched badges, filters, and raw JSON.</p>
       </div>
-      <div class="top-actions">
+      <div class="hero-card">
         <span id="status" class="status">READY</span>
-        <button id="scanBtn" class="btn primary">RUN SCAN</button>
+        <button id="scanBtn" class="primary">Scan listings</button>
       </div>
     </header>
 
-    <section class="console-grid">
-      <aside class="panel config">
-        <div class="panel-title">[01] CONFIG</div>
+    <section class="quickbar">
+      <input id="proxyUrl" type="hidden">
+      <label class="api-key">
+        <span>API key</span>
+        <input id="apiKey" type="password" autocomplete="current-password" placeholder="Paste token">
+      </label>
+      <button id="showBtn" class="ghost">Show</button>
+      <button id="testBtn" class="ghost">Test</button>
+      <button id="saveBtn" class="ghost">Save</button>
+      <button id="clearBtn" class="ghost danger">Clear</button>
+    </section>
 
-        <input id="proxyUrl" type="hidden">
-        <div class="connection-hidden">
-          <b>TRANSPORT:</b> hidden docs-aligned proxy bridge
-          <span>Cloudflare URL is not shown in the scanner UI.</span>
+    <section class="main-grid">
+      <aside class="panel targets-panel">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">01</span>
+            <h2>Targets</h2>
+          </div>
+          <button id="ogBtn" class="ghost small">OG set</button>
         </div>
 
-        <label>API KEY</label>
-        <input id="apiKey" type="password" autocomplete="current-password" placeholder="paste lzt api key">
-
-        <label>OPTIONAL COOKIE FOR IMAGES</label>
-        <input id="cookie" type="password" autocomplete="off" placeholder="only if image endpoint needs session">
-
-        <div class="row">
-          <button id="showBtn" class="btn">SHOW</button>
-          <button id="testBtn" class="btn">TEST</button>
-          <button id="saveBtn" class="btn">SAVE</button>
-          <button id="clearBtn" class="btn danger">CLEAR</button>
+        <div class="target-input">
+          <input id="targetInput" placeholder="Paste a cosmetic filter or LZT URL">
+          <button id="addTargetBtn" class="secondary">Add</button>
         </div>
 
-        <div class="mini-log" id="miniLog">system idle...</div>
-      </aside>
-
-      <section class="panel targets">
-        <div class="panel-title">[02] TARGETS</div>
-        <div class="target-add">
-          <input id="targetInput" placeholder="skin[]=... / pickaxe[]=... / full lzt url / raw cosmetic id">
-          <button id="addTargetBtn" class="btn">ADD</button>
-        </div>
-
-        <details open>
-          <summary>ACTIVE_TARGETS <b id="targetCount">0</b></summary>
-          <div id="targetList" class="target-list"></div>
+        <details class="target-box" open>
+          <summary>Active targets <b id="targetCount">0</b></summary>
+          <div id="targetList" class="targets"></div>
         </details>
 
-        <textarea id="bulkTargets" rows="5" spellcheck="false" placeholder="bulk paste targets here"></textarea>
-        <div class="row">
-          <button id="parseBulkBtn" class="btn">PARSE BULK</button>
-          <button id="ogBtn" class="btn">LOAD OG SET</button>
-          <button id="clearTargetsBtn" class="btn danger">CLEAR TARGETS</button>
+        <textarea id="bulkTargets" rows="5" placeholder="Bulk paste targets here"></textarea>
+
+        <div class="button-row">
+          <button id="parseBulkBtn" class="ghost">Parse bulk</button>
+          <button id="clearTargetsBtn" class="ghost danger">Clear targets</button>
+        </div>
+      </aside>
+
+      <section class="panel scan-panel">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">02</span>
+            <h2>Scan setup</h2>
+          </div>
+        </div>
+
+        <div class="settings-grid">
+          <label>
+            <span>Order</span>
+            <select id="order">
+              <option value="pdate_to_down_upload">Newest uploaded</option>
+              <option value="pdate_to_up_upload">Oldest uploaded</option>
+              <option value="price_to_up">Cheapest first</option>
+              <option value="price_to_down">Highest price</option>
+              <option value="pdate_to_down">Newest listed</option>
+              <option value="pdate_to_up">Oldest listed</option>
+            </select>
+          </label>
+          <label>
+            <span>Pages</span>
+            <input id="pages" type="number" min="1" max="50" value="5">
+          </label>
+          <label>
+            <span>Threads</span>
+            <input id="threads" type="number" min="1" max="8" value="3">
+          </label>
+          <label>
+            <span>Delay</span>
+            <input id="delay" type="number" min="0" max="15000" value="250">
+          </label>
+        </div>
+
+        <div class="toggle-grid">
+          <label class="toggle"><input id="apiDetails" type="checkbox" checked><span>API detail pass</span></label>
+          <label class="toggle"><input id="includeRaw" type="checkbox" checked><span>Show raw JSON</span></label>
+        </div>
+
+        <div class="note">
+          Uses API JSON only. Sends <strong>order</strong> as primary, <strong>order_by</strong> as fallback, and keeps requests under the documented rate limit.
         </div>
       </section>
     </section>
 
-    <section class="panel controls">
-      <div class="panel-title">[03] SCAN ARGS</div>
-      <div class="sort-note">API_CLIENT: bearer auth via proxy · 300/min-safe throttle · 429 retry · order primary</div>
-      <div class="sort-note">SENDS: order primary + order_by fallback · NEWEST = API order param + upload timestamp closest to current system/browser time.</div>
-      <div class="args-grid">
-        <label>ORDER
-          <select id="order">
-            <option value="pdate_to_down_upload">newest_uploaded</option>
-            <option value="pdate_to_up_upload">oldest_uploaded</option>
-            <option value="price_to_up">cheapest_first</option>
-            <option value="price_to_down">highest_price</option>
-            <option value="pdate_to_down">newest_listed</option>
-            <option value="pdate_to_up">oldest_listed</option>
-          </select>
-        </label>
-        <label>PAGES
-          <input id="pages" type="number" min="1" max="30" value="4">
-        </label>
-        <label>THREADS
-          <input id="threads" type="number" min="1" max="8" value="3">
-        </label>
-        <label>DELAY_MS
-          <input id="delay" type="number" min="0" max="15000" value="350">
-        </label>
-        <label class="check"><input id="enrich" type="checkbox" checked> enrich_html</label>
-        <label class="check"><input id="loadImages" type="checkbox" checked> load_images</label>
-      </div>
-    </section>
-
     <section class="stats">
-      <div><span>SHOWN</span><b id="statShown">0</b></div>
-      <div><span>UNIQUE</span><b id="statUnique">0</b></div>
-      <div><span>HITS</span><b id="statHits">0</b></div>
-      <div><span>IMG_FAIL</span><b id="statImgFail">0</b></div>
-      <div><span>SAVED</span><b id="statSaved">0</b></div>
+      <div><span>Shown</span><b id="statShown">0</b></div>
+      <div><span>Unique</span><b id="statUnique">0</b></div>
+      <div><span>Hits</span><b id="statHits">0</b></div>
+      <div><span>API req</span><b id="statReq">0</b></div>
+      <div><span>Saved</span><b id="statSaved">0</b></div>
     </section>
 
     <section class="panel filters">
-      <div class="panel-title">[04] FILTER_PIPE</div>
-      <div class="filter-line">
-        <input id="q" placeholder="grep title/seller/badge/country">
-        <input id="minPrice" type="number" min="0" placeholder="price_min">
-        <input id="maxPrice" type="number" min="0" placeholder="price_max">
-        <select id="sort">
-          <option value="market">sort:global_market</option>
-          <option value="newest">sort:newest</option>
-          <option value="price_asc">sort:price_asc</option>
-          <option value="price_desc">sort:price_desc</option>
-          <option value="matches_desc">sort:matches_desc</option>
-        </select>
-        <label class="check"><input id="multiOnly" type="checkbox"> multi_match</label>
+      <div class="section-head compact-head">
+        <div>
+          <span class="eyebrow">03</span>
+          <h2>Filter feed</h2>
+        </div>
+        <div class="button-row no-margin">
+          <button id="resetFiltersBtn" class="ghost small">Reset</button>
+          <button id="compactBtn" class="ghost small">Compact</button>
+          <button id="copyBtn" class="ghost small">Copy visible</button>
+          <button id="exportBtn" class="ghost small">Export JSON</button>
+        </div>
       </div>
-      <div class="row">
-        <button id="resetFiltersBtn" class="btn">RESET FILTERS</button>
-        <button id="compactBtn" class="btn">COMPACT</button>
-        <button id="copyBtn" class="btn">COPY FILTERED</button>
-        <button id="exportBtn" class="btn">EXPORT JSON</button>
+
+      <div class="filterrow">
+        <input id="q" placeholder="Search any listing field">
+        <input id="minPrice" type="number" min="0" placeholder="Min price">
+        <input id="maxPrice" type="number" min="0" placeholder="Max price">
+        <select id="sort">
+          <option value="api">API / global newest</option>
+          <option value="newest">Newest by upload time</option>
+          <option value="price_asc">Price low</option>
+          <option value="price_desc">Price high</option>
+          <option value="matches_desc">Most matches</option>
+          <option value="skins_desc">Most skins</option>
+        </select>
+        <label class="toggle inline"><input id="multiOnly" type="checkbox"><span>Multi-match</span></label>
       </div>
     </section>
 
-    <section class="panel feed-panel">
-      <div class="panel-title">[05] GLOBAL_MIXED_FEED</div>
-      <div id="progress" class="progress hidden"><span id="progressText">0%</span><div><i id="progressBar"></i></div></div>
+    <section class="panel feedpanel">
+      <div class="section-head">
+        <div>
+          <span class="eyebrow">04</span>
+          <h2>Global mixed feed</h2>
+        </div>
+      </div>
+
+      <div id="progress" class="progress hidden">
+        <span id="progressText">0%</span>
+        <div><i id="progressBar"></i></div>
+      </div>
+
       <div id="feed" class="empty">
-        <pre>
-C:\WROTA&gt; waiting for scan...
-Targets are inputs only.
-Results will appear as one global mixed feed.
-        </pre>
+        <h3>No listings yet</h3>
+        <p>Run a scan when your targets are ready.</p>
       </div>
     </section>
 
     <section class="panel saved-panel">
-      <div class="panel-title">[06] SAVED_CASES</div>
-      <div class="row">
-        <button id="exportSavedBtn" class="btn">EXPORT SAVED</button>
-        <button id="clearSavedBtn" class="btn danger">CLEAR SAVED</button>
+      <div class="section-head compact-head">
+        <div>
+          <span class="eyebrow">05</span>
+          <h2>Saved</h2>
+        </div>
+        <div class="button-row no-margin">
+          <button id="exportSavedBtn" class="ghost small">Export saved</button>
+          <button id="clearSavedBtn" class="ghost danger small">Clear saved</button>
+        </div>
       </div>
-      <div id="saved" class="empty small"><pre>no saved cases</pre></div>
+      <div id="saved" class="empty small-empty">
+        <h3>No saved listings</h3>
+      </div>
     </section>
 
-    <section class="panel debug">
-      <div class="panel-title">[07] DEBUG_LOG</div>
-      <button id="clearLogBtn" class="btn">CLEAR LOG</button>
-      <pre id="debugLog"></pre>
+    <section class="panel debug-panel">
+      <div class="section-head compact-head">
+        <div>
+          <span class="eyebrow">06</span>
+          <h2>Debug</h2>
+        </div>
+        <button id="clearLogBtn" class="ghost small">Clear log</button>
+      </div>
+      <pre id="debugLog" class="log"></pre>
     </section>
   </main>
 
-  <script src="app.js?v=cmd-1"></script>
+  <script src="app.js?v=clean-1"></script>
 </body>
 </html>
