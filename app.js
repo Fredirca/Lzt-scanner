@@ -2,6 +2,7 @@ const DEFAULT_PROXY_URL="https://shiny-shape-49fd.flruming.workers.dev";
 const API_BASE="https://prod-api.lzt.market";
 const CASES_KEY="wrota.polished.cases.v1";
 const RESULTS_KEY="wrota.polished.results.v1";
+let MEMORY_RESULTS=[];
 
 const OG_FILTERS=[
   {label:"OG Renegade Raider",group:"Skin",param:"skin[]",id:"028_athena_commando_f",aliases:["og renegade raider","renegade raider"]},
@@ -36,11 +37,54 @@ function getJson(key, fallback){
   try{return JSON.parse(localStorage.getItem(key)||"null") ?? fallback;}
   catch{return fallback;}
 }
-function setJson(key,value){localStorage.setItem(key,JSON.stringify(value));}
-function cases(){return getJson(CASES_KEY,[]);}
-function saveCases(list){setJson(CASES_KEY,list); updateStats();}
-function currentResults(){return getJson(RESULTS_KEY,[]);}
-function saveCurrentResults(list){setJson(RESULTS_KEY,list); updateStats();}
+function setJson(key,value){
+  if(key===RESULTS_KEY){
+    MEMORY_RESULTS = Array.isArray(value) ? value.map(compactCase) : [];
+    return;
+  }
+
+  const compact = Array.isArray(value) ? value.map(compactCase).slice(0,100) : value;
+
+  try{
+    localStorage.setItem(key,JSON.stringify(compact));
+  }catch(error){
+    try{
+      localStorage.removeItem(RESULTS_KEY);
+      localStorage.removeItem("wrota.polished.results.v1");
+      localStorage.removeItem("wrota.results");
+      const smaller = Array.isArray(compact) ? compact.slice(0,50) : compact;
+      localStorage.setItem(key,JSON.stringify(smaller));
+      toast("Browser storage was full, so older saved cases were trimmed.");
+    }catch(secondError){
+      try{ localStorage.removeItem(key); }catch{}
+      toast("Browser storage is full. Results are shown for this session only.");
+    }
+  }
+}
+function cases(){return getJson(CASES_KEY,[]).map(compactCase).slice(0,100);}
+function saveCases(list){setJson(CASES_KEY,(Array.isArray(list)?list:[]).map(compactCase).slice(0,100)); updateStats();}
+function currentResults(){return MEMORY_RESULTS;}
+function saveCurrentResults(list){
+  MEMORY_RESULTS = Array.isArray(list) ? list.map(compactCase) : [];
+  updateStats();
+}
+
+function trimLegacyStorage(){
+  try{
+    localStorage.removeItem(RESULTS_KEY);
+    localStorage.removeItem("wrota.polished.results.v1");
+    localStorage.removeItem("wrota.results");
+  }catch{}
+  try{
+    const list=getJson(CASES_KEY,[]);
+    if(Array.isArray(list)){
+      const compact=list.map(compactCase).slice(0,100);
+      localStorage.setItem(CASES_KEY,JSON.stringify(compact));
+    }
+  }catch{
+    try{localStorage.removeItem(CASES_KEY);}catch{}
+  }
+}
 
 function renderFilters(){
   $("filterCount").textContent=`${OG_FILTERS.length} active`;
@@ -186,10 +230,117 @@ async function detail(id,fallback){
   catch(error){return {summary_only:fallback,error:error.message};}
 }
 
+
+function activeAdvancedParams(){
+  const params={};
+
+  document.querySelectorAll("[data-filter-param]").forEach(el=>{
+    const key=el.dataset.filterParam;
+    if(!key)return;
+    if(el.type==="checkbox"){
+      if(el.checked)params[key]=1;
+      return;
+    }
+    const value=(el.value||"").trim();
+    if(value)params[key]=value;
+  });
+
+  document.querySelectorAll("[data-array-param]").forEach(el=>{
+    const key=el.dataset.arrayParam;
+    const raw=(el.value||"").trim();
+    if(!key || !raw)return;
+    const values=raw.split(",").map(x=>x.trim()).filter(Boolean);
+    if(values.length)params[key]=values;
+  });
+
+  document.querySelectorAll("[data-radio-group]").forEach(group=>{
+    const key=group.dataset.radioGroup;
+    const active=group.querySelector("button.active");
+    const value=active?.dataset?.value || "";
+    if(key && value)params[key]=value;
+  });
+
+  if($("pubDateEnabled")?.checked){
+    if($("pubDateFrom")?.value)params["published_after"]=$("pubDateFrom").value;
+    if($("pubDateTo")?.value)params["published_before"]=$("pubDateTo").value;
+  }
+
+  return params;
+}
+
+function mergeParams(base, extra){
+  const merged={...base};
+  for(const [key,value] of Object.entries(extra||{})){
+    if(value===undefined||value===null||value==="")continue;
+    if(merged[key]!==undefined){
+      const a=Array.isArray(merged[key])?merged[key]:[merged[key]];
+      const b=Array.isArray(value)?value:[value];
+      merged[key]=[...a,...b];
+    }else{
+      merged[key]=value;
+    }
+  }
+  return merged;
+}
+
+function resetAdvancedFilters(){
+  document.querySelectorAll(".advanced-panel input").forEach(el=>{
+    if(el.type==="checkbox")el.checked=false;
+    else el.value="";
+  });
+  document.querySelectorAll(".advanced-panel select").forEach(el=>el.value="");
+  document.querySelectorAll("[data-radio-group]").forEach(group=>{
+    group.querySelectorAll("button").forEach(btn=>btn.classList.toggle("active",btn.dataset.value===""));
+  });
+  toast("Advanced filters reset");
+}
+
+function bindAdvancedFilters(){
+  document.querySelectorAll("[data-radio-group] button").forEach(btn=>{
+    btn.onclick=()=>{
+      const group=btn.closest("[data-radio-group]");
+      group.querySelectorAll("button").forEach(x=>x.classList.remove("active"));
+      btn.classList.add("active");
+    };
+  });
+  $("resetAdvancedBtn").onclick=resetAdvancedFilters;
+}
+
+function localAdvancedMatch(item){
+  const title=($("titleSearch")?.value||"").trim().toLowerCase();
+  if(title){
+    const text=textFrom(item);
+    if(!text.includes(title))return false;
+  }
+
+  const minMaxChecks=[
+    ["priceFrom","price",">="],["priceTo","price","<="],
+    ["outfitsFrom","skins",">="],["outfitsTo","skins","<="],
+    ["pickaxesFrom","pickaxes",">="],["pickaxesTo","pickaxes","<="],
+    ["dancesFrom","dances",">="],["dancesTo","dances","<="],
+    ["glidersFrom","gliders",">="],["glidersTo","gliders","<="],
+    ["vbucksFrom","vbucks",">="],["vbucksTo","vbucks","<="],
+    ["friendsFrom","friends",">="],["friendsTo","friends","<="],
+    ["levelFrom","level",">="],["levelTo","level","<="]
+  ];
+
+  for(const [inputId,field,op] of minMaxChecks){
+    const raw=($(inputId)?.value||"").trim();
+    if(!raw)continue;
+    const target=Number(raw);
+    const value=Number(item?.[field] ?? item?.raw?.summary?.[field] ?? item?.raw?.detail?.[field]);
+    if(Number.isNaN(value))continue;
+    if(op===">=" && value<target)return false;
+    if(op==="<=" && value>target)return false;
+  }
+
+  return true;
+}
+
 function paramsForFilter(filter,page){
   const params={page,order_by:"pdate_to_down_upload",currency:"usd"};
   params[filter.param]=filter.id;
-  return params;
+  return mergeParams(params, activeAdvancedParams());
 }
 
 function progress(done,total,label){
@@ -306,6 +457,7 @@ async function scan(){
           const items=extractItems(data);
 
           for(const item of items){
+            if(!localAdvancedMatch(item))continue;
             const id=itemId(item);
             if(!id)continue;
             const existing=found.get(id)||item;
@@ -337,7 +489,7 @@ async function scan(){
       };
     });
 
-    saveCurrentResults(summaries);
+    saveCurrentResults(summaries.slice(0,300));
     renderResults(summaries);
 
     const detailed=[];
@@ -353,7 +505,7 @@ async function scan(){
         matched_filters:item._matchedFilters||fallbackMatches(item,d),
         raw:{summary:item,detail:d}
       });
-      saveCurrentResults(detailed.concat(summaries.slice(detailed.length)));
+      saveCurrentResults(detailed.concat(summaries.slice(detailed.length)).slice(0,300));
       renderResults(currentResults());
       await sleep(Math.min(delay,1500));
     }
@@ -418,6 +570,7 @@ function bind(){
   $("exportResultsBtn").onclick=()=>downloadJson("wrota-results.json",currentResults());
   $("exportCasesBtn").onclick=()=>downloadJson("wrota-cases.json",cases());
   $("clearCasesBtn").onclick=()=>{saveCases([]);renderCases();toast("Cases cleared");};
+  bindAdvancedFilters();
 }
 
 window.addEventListener("error",event=>{
@@ -430,6 +583,7 @@ window.addEventListener("unhandledrejection",event=>{
   $("resultsSubtitle").textContent=event?.reason?.message||String(event.reason||"Unknown error");
 });
 
+trimLegacyStorage();
 renderFilters();
 renderResults();
 renderCases();

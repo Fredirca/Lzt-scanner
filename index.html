@@ -104,6 +104,130 @@
         </details>
       </section>
 
+
+      <section class="panel advanced-panel">
+        <div class="panel-head">
+          <div>
+            <h3>Advanced filters</h3>
+            <p>Refine the scan before matching OG presets.</p>
+          </div>
+          <button id="resetAdvancedBtn" class="ghost small" type="button">Reset</button>
+        </div>
+
+        <div class="advanced-grid">
+          <div class="filter-column">
+            <div class="range-row">
+              <input id="priceFrom" data-filter-param="pmin" type="number" min="0" placeholder="Price from">
+              <input id="priceTo" data-filter-param="pmax" type="number" min="0" placeholder="up to">
+            </div>
+            <input id="titleSearch" data-filter-param="title" type="text" placeholder="Search by title, Fortnite ID">
+            <select id="platformFilter" data-filter-param="platform">
+              <option value="">Platform</option>
+              <option value="pc">PC</option>
+              <option value="xbox">Xbox</option>
+              <option value="playstation">PlayStation</option>
+              <option value="switch">Switch</option>
+              <option value="mobile">Mobile</option>
+            </select>
+            <input id="accountOrigin" data-filter-param="origin" type="text" placeholder="Account origin">
+            <input id="excludeAccountOrigin" data-filter-param="not_origin" type="text" placeholder="Exclude account origin">
+            <select id="emailAccess" data-filter-param="email_access">
+              <option value="">Access to email</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+            <input id="emailDomain" data-filter-param="email_domain" type="text" placeholder="Email domain">
+            <input id="excludeEmailDomain" data-filter-param="not_email_domain" type="text" placeholder="Exclude mail domain">
+            <input id="mailProvider" data-filter-param="mail_provider" type="text" placeholder="Mail provider">
+            <input id="excludeMailProvider" data-filter-param="not_mail_provider" type="text" placeholder="Exclude mail provider">
+
+            <label class="check-card">
+              <input id="pubDateEnabled" type="checkbox">
+              <span>Filter by publication date</span>
+            </label>
+            <div class="range-row">
+              <input id="pubDateFrom" type="date">
+              <input id="pubDateTo" type="date">
+            </div>
+
+            <label class="check-card"><input id="notSoldBefore" data-filter-param="not_sold_before" type="checkbox"><span>Not sold before</span></label>
+            <label class="check-card"><input id="soldBefore" data-filter-param="sold_before" type="checkbox"><span>Sold before</span></label>
+            <label class="check-card"><input id="notSoldByMe" data-filter-param="not_sold_by_me" type="checkbox"><span>Not sold before by me</span></label>
+            <label class="check-card"><input id="soldByMe" data-filter-param="sold_by_me" type="checkbox"><span>Sold before by me</span></label>
+          </div>
+
+          <div class="filter-column">
+            <input id="extraOutfits" data-array-param="skin[]" type="text" placeholder="Select outfits">
+            <input id="extraPickaxes" data-array-param="pickaxe[]" type="text" placeholder="Select pickaxes">
+            <input id="extraEmotes" data-array-param="dance[]" type="text" placeholder="Select emotes">
+            <input id="extraGliders" data-array-param="glider[]" type="text" placeholder="Select gliders">
+            <input id="guaranteeLength" data-filter-param="guarantee" type="number" min="0" placeholder="Guarantee length">
+            <input id="lastActivityDays" data-filter-param="last_activity" type="number" min="0" placeholder="Last activity in days">
+
+            <div class="seg-card" data-radio-group="change_email">
+              <strong>Changeable email</strong>
+              <div>
+                <button type="button" class="active" data-value="">No matter</button>
+                <button type="button" data-value="yes">Yes</button>
+                <button type="button" data-value="no">No</button>
+              </div>
+            </div>
+
+            <div class="seg-card" data-radio-group="xbox_linkable">
+              <strong>XBOX linkable</strong>
+              <div>
+                <button type="button" class="active" data-value="">No matter</button>
+                <button type="button" data-value="maybe">Maybe</button>
+                <button type="button" data-value="no">No</button>
+              </div>
+            </div>
+
+            <div class="seg-card" data-radio-group="psn_linkable">
+              <strong>PSN linkable</strong>
+              <div>
+                <button type="button" class="active" data-value="">No matter</button>
+                <button type="button" data-value="maybe">Maybe</button>
+                <button type="button" data-value="no">No</button>
+              </div>
+            </div>
+
+            <h4>Total cost in V-Bucks</h4>
+            <div class="range-row"><input id="totalOutfitsFrom" data-filter-param="cost_skins_min" type="number" min="0" placeholder="Min outfits"><input id="totalOutfitsTo" data-filter-param="cost_skins_max" type="number" min="0" placeholder="up to"></div>
+            <div class="range-row"><input id="totalPickaxesFrom" data-filter-param="cost_pickaxes_min" type="number" min="0" placeholder="Pickaxes, from"><input id="totalPickaxesTo" data-filter-param="cost_pickaxes_max" type="number" min="0" placeholder="up to"></div>
+            <div class="range-row"><input id="totalDancesFrom" data-filter-param="cost_dances_min" type="number" min="0" placeholder="Dances, from"><input id="totalDancesTo" data-filter-param="cost_dances_max" type="number" min="0" placeholder="up to"></div>
+            <div class="range-row"><input id="totalGlidersFrom" data-filter-param="cost_gliders_min" type="number" min="0" placeholder="Gliders, from"><input id="totalGlidersTo" data-filter-param="cost_gliders_max" type="number" min="0" placeholder="up to"></div>
+          </div>
+
+          <div class="filter-column">
+            <div class="range-row"><input id="outfitsFrom" data-filter-param="skins_min" type="number" min="0" placeholder="Min outfits"><input id="outfitsTo" data-filter-param="skins_max" type="number" min="0" placeholder="up to"></div>
+            <div class="range-row"><input id="pickaxesFrom" data-filter-param="pickaxes_min" type="number" min="0" placeholder="Pickaxes, from"><input id="pickaxesTo" data-filter-param="pickaxes_max" type="number" min="0" placeholder="up to"></div>
+            <div class="range-row"><input id="dancesFrom" data-filter-param="dances_min" type="number" min="0" placeholder="Dances, from"><input id="dancesTo" data-filter-param="dances_max" type="number" min="0" placeholder="up to"></div>
+            <div class="range-row"><input id="glidersFrom" data-filter-param="gliders_min" type="number" min="0" placeholder="Gliders, from"><input id="glidersTo" data-filter-param="gliders_max" type="number" min="0" placeholder="up to"></div>
+            <div class="range-row"><input id="vbucksFrom" data-filter-param="vbucks_min" type="number" min="0" placeholder="Min V-Bucks"><input id="vbucksTo" data-filter-param="vbucks_max" type="number" min="0" placeholder="up to"></div>
+            <div class="range-row"><input id="friendsFrom" data-filter-param="friends_min" type="number" min="0" placeholder="Min friends"><input id="friendsTo" data-filter-param="friends_max" type="number" min="0" placeholder="up to"></div>
+            <div class="range-row"><input id="levelFrom" data-filter-param="level_min" type="number" min="0" placeholder="Level, from"><input id="levelTo" data-filter-param="level_max" type="number" min="0" placeholder="up to"></div>
+
+            <h4>Paid items</h4>
+            <div class="range-row"><input id="paidOutfitsFrom" data-filter-param="paid_skins_min" type="number" min="0" placeholder="Min outfits"><input id="paidOutfitsTo" data-filter-param="paid_skins_max" type="number" min="0" placeholder="up to"></div>
+            <div class="range-row"><input id="paidPickaxesFrom" data-filter-param="paid_pickaxes_min" type="number" min="0" placeholder="Pickaxes, from"><input id="paidPickaxesTo" data-filter-param="paid_pickaxes_max" type="number" min="0" placeholder="up to"></div>
+            <div class="range-row"><input id="paidDancesFrom" data-filter-param="paid_dances_min" type="number" min="0" placeholder="Dances, from"><input id="paidDancesTo" data-filter-param="paid_dances_max" type="number" min="0" placeholder="up to"></div>
+            <div class="range-row"><input id="paidGlidersFrom" data-filter-param="paid_gliders_min" type="number" min="0" placeholder="Gliders, from"><input id="paidGlidersTo" data-filter-param="paid_gliders_max" type="number" min="0" placeholder="up to"></div>
+
+            <div class="seg-card" data-radio-group="battle_pass">
+              <strong>Battle Pass</strong>
+              <div>
+                <button type="button" class="active" data-value="">No matter</button>
+                <button type="button" data-value="yes">Yes</button>
+                <button type="button" data-value="no">No</button>
+              </div>
+            </div>
+
+            <div class="range-row"><input id="bpLevelFrom" data-filter-param="battle_pass_level_min" type="number" min="0" placeholder="Battle Pass level from"><input id="bpLevelTo" data-filter-param="battle_pass_level_max" type="number" min="0" placeholder="up to"></div>
+            <input id="lastTransactionDays" data-filter-param="last_transaction_days" type="number" min="0" placeholder="Last transaction date more than days">
+          </div>
+        </div>
+      </section>
+
       <section class="stats">
         <div class="stat"><span>Matches</span><strong id="statMatches">0</strong></div>
         <div class="stat"><span>Saved cases</span><strong id="statCases">0</strong></div>
