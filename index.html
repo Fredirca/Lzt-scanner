@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Wrota — Clean v2.2.0</title>
-  <meta name="description" content="Clean API-only listing scanner with skin search and exclusive filters.">
-  <link rel="stylesheet" href="styles.css?v=2.2.0">
+  <title>Wrota — Fixed Clean v2.3.0</title>
+  <meta name="description" content="Clean API-only listing scanner with working search and exclusive filters.">
+  <link rel="stylesheet" href="styles.css?v=2.3.0">
 </head>
 <body>
   <main class="app">
@@ -107,10 +107,12 @@
             <span>Watch every seconds</span>
             <input id="watchInterval" type="number" min="30" max="3600" value="90">
           </label>
+
           <label>
             <span>Threads</span>
             <input id="threads" type="number" min="1" max="8" value="3">
           </label>
+
           <label>
             <span>Delay ms</span>
             <input id="delay" type="number" min="0" max="15000" value="250">
@@ -140,6 +142,7 @@
           </details>
 
           <textarea id="bulkTargets" rows="3" placeholder="Bulk paste targets"></textarea>
+
           <div class="auth-actions">
             <button id="parseBulkBtn">Parse bulk</button>
             <button id="ogBtn">OG defaults</button>
@@ -172,6 +175,7 @@
         <input id="q" placeholder="Filter results">
         <input id="minPrice" type="number" min="0" placeholder="Min $">
         <input id="maxPrice" type="number" min="0" placeholder="Max $">
+
         <select id="sort">
           <option value="api">Best order</option>
           <option value="newest">Newest</option>
@@ -180,6 +184,7 @@
           <option value="matches_desc">Most matches</option>
           <option value="skins_desc">Most skins</option>
         </select>
+
         <label class="check"><input id="multiOnly" type="checkbox"> Multi</label>
       </div>
 
@@ -190,7 +195,7 @@
 
       <div id="feed" class="empty">
         <h3>No results yet</h3>
-        <p>Search for a skin, pick exclusive filters, then scan.</p>
+        <p>Search for a skin, choose an exclusive filter, then scan.</p>
       </div>
     </section>
 
@@ -213,9 +218,9 @@
       </details>
     </section>
 
-    <footer>Wrota v2.2.0 · skin search · exclusive filters · API-only · no price baseline</footer>
+    <footer>Wrota v2.3.0 · working skin search · exclusive filters · API-only · no price baseline</footer>
   </main>
 
-  <script src="app.js?v=2.2.0"></script>
+  <script src="app.js?v=2.3.0"></script>
 </body>
 </html>

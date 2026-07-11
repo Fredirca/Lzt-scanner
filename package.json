@@ -1,7 +1,8 @@
 {
   "name": "wrota-api-console",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "private": true,
+  "description": "API-only listing review console.",
   "scripts": {
     "check": "node --check app.js"
   }

@@ -1,15 +1,9 @@
-## v2.2.0
+## v2.3.0
 
-- Restored visible skin search bar
-- Restored exclusive filters dropdown
-- Kept price baseline removed
-
-## v2.2.0
-
-- Restored visible skin search bar
-- Restored exclusive filters dropdown
-- Kept watch mode and API-only scanning
-- Kept price baseline removed
+- Rebuilt from a known-working source to fix broken search
+- Restored skin search and exclusive filters
+- Removed only the price-baseline layer
+- Kept watch mode, sound alerts, API details, export/copy/save
 
 ## v2.0.0
 

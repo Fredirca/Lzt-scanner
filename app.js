@@ -346,30 +346,148 @@ async function pool(tasks,limit,onDone){
   await Promise.all(Array.from({length:Math.max(1,Math.min(limit,tasks.length))},worker));
 }
 
+function priceNumber(r){return num(r?.price);}
+function median(values){
+  const xs=values.filter(v=>Number.isFinite(v)).sort((a,b)=>a-b);
+  if(!xs.length)return null;
+  const mid=Math.floor(xs.length/2);
+  return xs.length%2?xs[mid]:(xs[mid-1]+xs[mid])/2;
+}
+function avg(values){
+  const xs=values.filter(v=>Number.isFinite(v));
+  if(!xs.length)return null;
+  return xs.reduce((a,b)=>a+b,0)/xs.length;
+}
+function percentile(values,p){
+  const xs=values.filter(v=>Number.isFinite(v)).sort((a,b)=>a-b);
+  if(!xs.length)return null;
+  const idx=(xs.length-1)*p;
+  const lo=Math.floor(idx), hi=Math.ceil(idx);
+  if(lo===hi)return xs[lo];
+  return xs[lo]+(xs[hi]-xs[lo])*(idx-lo);
+}
+function minBaselineSamples(){
+  return Math.max(2,Math.min(50,Number($("baselineMinSamples")?.value)||3));
+}
+function discountThreshold(){
+  return Math.max(1,Math.min(90,Number($("discountThreshold")?.value)||25));
+}
+function priceCheckEnabled(){ return false; }
+function priceFmt(n){
+  return Number.isFinite(n)?`$${n.toFixed(2)}`:"Unknown";
+}
 
+function rareStackMode(){
+  return $("rareStackMode")?.value||"stacked";
+}
+function listingRareLabels(r){
+  const labels=(r.labels||[]).filter(x=>x&&String(x).trim());
+  return [...new Set(labels)];
+}
+function rareUnitBaselines(){
+  const map=baselineMap();
+  const minN=minBaselineSamples();
+  return [...map.values()].filter(b=>b.n>=minN&&Number.isFinite(b.median)&&b.median>0);
+}
+function rareStackBaselineFor(r){ return null; }
+function rareStackText(r){
+  const b=rareStackBaselineFor(r);
+  if(!b)return "Needs more samples";
+  const partText=(b.parts||[]).map(x=>x.label).slice(0,4).join(" + ");
+  const more=(b.parts||[]).length>4?` + ${(b.parts||[]).length-4} more`:"";
+  return `${priceFmt(b.median)} stack baseline · ${Math.abs(b.gapPct).toFixed(0)}% ${b.gapPct>=0?"below":"above"} · ${partText}${more}`;
+}
+function rareStackValue(r){ return 0; }
 
+function baselineMap(){
+  const groups=new Map();
+  for(const r of results){
+    const p=priceNumber(r);
+    if(!Number.isFinite(p)||p<=0)continue;
+    const labels=(r.labels&&r.labels.length)?r.labels:["All listings"];
+    for(const label of labels){
+      if(!groups.has(label))groups.set(label,[]);
+      groups.get(label).push(p);
+    }
+  }
+  const map=new Map();
+  for(const [label,prices] of groups.entries()){
+    const med=median(prices);
+    if(!Number.isFinite(med))continue;
+    map.set(label,{
+      label,
+      n:prices.length,
+      median:med,
+      average:avg(prices),
+      p25:percentile(prices,.25),
+      p75:percentile(prices,.75)
+    });
+  }
+  return map;
+}
+function priceBaselineFor(r){ return null; }
+function isBelowRegular(r){ return false; }
+function priceCheckText(r){ return "Off"; }
+function priceCheckBlock(r){ return ""; }
+function renderBaselinePanel(){ return; }
 
+function filter(){
+  const q=$("q").value.toLowerCase().trim();
+  const min=num($("minPrice").value);
+  const max=num($("maxPrice").value);
+  const multi=$("multiOnly").checked;
+  return results.filter(r=>{
+    const txt=[r.title,r.seller,r.country,r.apiText,...r.labels].join(" ").toLowerCase();
+    const p=num(r.price);
+    if(q&&!txt.includes(q))return false;
+    if(min!==null&&(p===null||p<min))return false;
+    if(max!==null&&(p===null||p>max))return false;
+    if(multi&&r.labels.length<2)return false;
+    return true;
+  });
+}
+function sortList(arr){
+  const s=$("sort").value;
+  if(s==="api")arr.sort((a,b)=>a.rank-b.rank);
+  else if(s==="newest")arr.sort((a,b)=>uploadMs(b)-uploadMs(a));
+  else if(s==="price_asc")arr.sort((a,b)=>(num(a.price)??Infinity)-(num(b.price)??Infinity));
+  else if(s==="price_desc")arr.sort((a,b)=>(num(b.price)??-Infinity)-(num(a.price)??-Infinity));
+  else if(s==="matches_desc")arr.sort((a,b)=>b.labels.length-a.labels.length||a.rank-b.rank);
+  else if(s==="skins_desc")arr.sort((a,b)=>(num(b.skins)??-Infinity)-(num(a.skins)??-Infinity));
+  return arr;
+}
+function visible(){return sortList(filter())}
+function message(r){return`New Fortnite listing on LZT Market
 
+Skin Count: ${r.skins}
+Matches: ${r.labels.join(", ")}
+Email Changeable: ${bool(r.email)}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+Title: ${r.title}
+Seller: ${r.seller}
+Price: ${price(r.price)}
+Level: ${r.level}
+Country: ${r.country}
+Upload Date: ${dateText(uploadOf(r))}
+Age: ${age(r)}
+Link: https://lzt.market/${r.id}/`}
+function card(r){
+  const msg=message(r);
+  return `<article class="card">
+    <div class="cardhead">
+      <div><div class="cmd">Listing #${esc(r.id)}</div><h3>${esc(r.title)}</h3><div class="badges">${r.labels.map(x=>`<span>${esc(x)}</span>`).join("")}</div></div>
+      <div class="price">${esc(price(r.price))}</div>
+    </div>
+    <div class="info">
+      <div><span>Skins</span><b>${esc(r.skins)}</b></div>
+      <div><span>Email</span><b>${esc(bool(r.email))}</b></div>
+      <div><span>Age</span><b>${esc(age(r))}</b></div>
+      <div><span>Matches</span><b>${r.labels.length}</b></div>
+    </div>
+    <div class="actions"><a href="https://lzt.market/${esc(r.id)}/" target="_blank">Open</a><button data-copy="${esc(msg)}">Copy</button><button data-save="${esc(r.id)}">Save</button></div>
+    ${$("includeRaw")?.checked?`<details class="raw"><summary>API JSON</summary><pre>${esc(JSON.stringify(r.raw,null,2))}</pre></details>`:""}
+  </article>`;
+}
 function renderStats(){const v=visible();$("statShown").textContent=v.length;$("statUnique").textContent=results.length;$("statHits").textContent=results.reduce((a,r)=>a+r.labels.length,0);$("statReq").textContent=reqCount;$("statSaved").textContent=saved.length}
 function renderFeed(){renderStats();renderBaselinePanel();const v=visible();const box=$("feed");if(!v.length){box.className="empty";box.innerHTML="<h3>No results</h3><p>Try relaxing filters or run another scan.</p>";return}box.className=compact?"cards compact":"cards";box.innerHTML=v.map(card).join("");wire(box)}
 function renderSaved(){const box=$("saved");$("statSaved").textContent=saved.length;if(!saved.length){box.className="empty small-empty";box.innerHTML="<h3>No saved listings</h3>";return}box.className="cards compact";box.innerHTML=saved.map(card).join("");wire(box)}
