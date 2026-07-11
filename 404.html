@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Wrota — Release v1.0.0</title>
+  <title>Wrota — Release v1.1.0</title>
   <meta name="description" content="API-only listing review console.">
-  <link rel="stylesheet" href="styles.css?v=1.0.0">
+  <link rel="stylesheet" href="styles.css?v=1.1.0">
 </head>
 <body>
   <main class="app">
@@ -20,7 +20,7 @@
 
       <div class="release">
         <span id="status">READY</span>
-        <small>Release v1.0.0</small>
+        <small>Release v1.1.0</small>
         <button id="scanBtn" class="primary">Scan</button>
       </div>
     </header>
@@ -104,8 +104,22 @@
           <label><input id="includeRaw" type="checkbox" checked> Raw JSON</label>
         </div>
 
+        <div class="exclusive-panel">
+          <div>
+            <span>Exclusive skin search</span>
+            <p>Scan known exclusive skin filters without manually adding every target.</p>
+          </div>
+          <select id="exclusiveMode">
+            <option value="off">Off</option>
+            <option value="og">OG style exclusives</option>
+            <option value="promo">Promo / device exclusives</option>
+            <option value="all">All exclusive presets</option>
+          </select>
+        </div>
+
+
         <p class="subtle">
-          Uses API JSON only. No images. No page scraping. Requests send <code>order</code>, with <code>order_by</code> kept as compatibility fallback.
+          Uses API JSON only. No images. No page scraping. Exclusive skin mode adds preset filters during scan. Requests send <code>order</code>, with <code>order_by</code> kept as compatibility fallback.
         </p>
       </section>
     </section>
@@ -186,11 +200,11 @@
     </section>
 
     <footer class="footer">
-      <span>Wrota Release v1.0.0</span>
+      <span>Wrota Release v1.1.0</span>
       <span>API-only · no images · no scraping</span>
     </footer>
   </main>
 
-  <script src="app.js?v=1.0.0"></script>
+  <script src="app.js?v=1.1.0"></script>
 </body>
 </html>

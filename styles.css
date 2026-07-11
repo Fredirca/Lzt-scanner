@@ -533,3 +533,31 @@ code{
   .cardhead{display:block}
   .price{display:inline-flex;margin-top:10px}
 }
+
+
+.exclusive-panel{
+  display:grid;
+  grid-template-columns:1fr minmax(220px,300px);
+  gap:12px;
+  align-items:center;
+  margin-top:14px;
+  padding:13px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--panel-2);
+}
+.exclusive-panel span{
+  display:block;
+  color:var(--text);
+  font-size:13px;
+  font-weight:750;
+}
+.exclusive-panel p{
+  margin:4px 0 0;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.45;
+}
+@media(max-width:720px){
+  .exclusive-panel{grid-template-columns:1fr}
+}

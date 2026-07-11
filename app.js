@@ -11,6 +11,50 @@ const DEFAULT_TARGETS=[
   {param:"skin[]",id:"017_athena_commando_m_og",label:"Aerial Assault Trooper OG Style"}
 ];
 
+
+const EXCLUSIVE_SKIN_PRESETS={
+  og:[
+    {param:"skin[]",id:"030_athena_commando_m_halloween_og",label:"OG Skull Trooper / Purple Skull"},
+    {param:"skin[]",id:"029_athena_commando_f_halloween_og",label:"OG Ghoul Trooper / Pink Ghoul"},
+    {param:"skin[]",id:"028_athena_commando_f_og",label:"Renegade Raider OG Style"},
+    {param:"skin[]",id:"017_athena_commando_m_og",label:"Aerial Assault Trooper OG Style"}
+  ],
+  promo:[
+    {param:"skin[]",id:"175_athena_commando_m_celestial",label:"Galaxy"},
+    {param:"skin[]",id:"313_athena_commando_m_kpopfashion",label:"iKONIK"},
+    {param:"skin[]",id:"479_athena_commando_f_davinci",label:"GLOW"},
+    {param:"skin[]",id:"434_athena_commando_f_stealthhonor",label:"Wonder"},
+    {param:"skin[]",id:"342_athena_commando_m_streetracermetallic",label:"Honor Guard"},
+    {param:"skin[]",id:"183_athena_commando_m_modernmilitaryred",label:"Double Helix"},
+    {param:"skin[]",id:"113_athena_commando_m_blueace",label:"Royale Bomber"},
+    {param:"skin[]",id:"174_athena_commando_f_carbidewhite",label:"Eon"},
+    {param:"skin[]",id:"371_athena_commando_m_speedymidnight",label:"Dark Vertex"},
+    {param:"skin[]",id:"441_athena_commando_f_cyberfu",label:"Neo Versa"},
+    {param:"skin[]",id:"386_athena_commando_m_streetopsstealth",label:"Stealth Reflex"},
+    {param:"skin[]",id:"757_athena_commando_f_wildcat",label:"Wildcat"}
+  ]
+};
+
+function exclusiveTargets(){
+  const mode=$("exclusiveMode")?.value||"off";
+  if(mode==="og")return EXCLUSIVE_SKIN_PRESETS.og.slice();
+  if(mode==="promo")return EXCLUSIVE_SKIN_PRESETS.promo.slice();
+  if(mode==="all")return [...EXCLUSIVE_SKIN_PRESETS.og,...EXCLUSIVE_SKIN_PRESETS.promo];
+  return [];
+}
+function mergedScanTargets(){
+  const merged=[];
+  const push=t=>{
+    if(!t||!t.param||!t.id)return;
+    if(merged.some(x=>x.param===t.param&&x.id===t.id))return;
+    merged.push({...t});
+  };
+  targets.forEach(push);
+  exclusiveTargets().forEach(push);
+  return merged;
+}
+
+
 let targets=[...DEFAULT_TARGETS];
 let results=[];
 let saved=[];
@@ -59,7 +103,19 @@ async function api(path,params={}){
 
 function canonicalParam(k){const s=decodeURIComponent(String(k||"")).toLowerCase();if(s.startsWith("skin"))return"skin[]";if(s.startsWith("pickaxe"))return"pickaxe[]";if(s.startsWith("dance")||s.startsWith("emote"))return"dance[]";if(s.startsWith("glider"))return"glider[]";return""}
 function inferParam(id){const s=String(id).toLowerCase();if(s.startsWith("pickaxe"))return"pickaxe[]";if(s.includes("athena_commando")||s.includes("commando"))return"skin[]";return"skin[]"}
-function labelFor(param,id){const s=String(id).toLowerCase();if(param==="pickaxe[]"&&s.includes("lockjaw_og"))return"Raider’s Revenge OG Style";if(s.includes("030_athena_commando_m_halloween_og"))return"OG Skull Trooper / Purple Skull";if(s.includes("029_athena_commando_f_halloween_og"))return"OG Ghoul Trooper / Pink Ghoul";if(s.includes("028_athena_commando_f_og"))return"Renegade Raider OG Style";if(s.includes("017_athena_commando_m_og"))return"Aerial Assault Trooper OG Style";return`${param} ${id}`}
+function labelFor(param,id){const s=String(id).toLowerCase();if(param==="pickaxe[]"&&s.includes("lockjaw_og"))return"Raider’s Revenge OG Style";if(s.includes("030_athena_commando_m_halloween_og"))return"OG Skull Trooper / Purple Skull";if(s.includes("029_athena_commando_f_halloween_og"))return"OG Ghoul Trooper / Pink Ghoul";if(s.includes("028_athena_commando_f_og"))return"Renegade Raider OG Style";if(s.includes("017_athena_commando_m_og"))return"Aerial Assault Trooper OG Style";
+  if(s.includes("175_athena_commando_m_celestial"))return"Galaxy";
+  if(s.includes("313_athena_commando_m_kpopfashion"))return"iKONIK";
+  if(s.includes("479_athena_commando_f_davinci"))return"GLOW";
+  if(s.includes("434_athena_commando_f_stealthhonor"))return"Wonder";
+  if(s.includes("342_athena_commando_m_streetracermetallic"))return"Honor Guard";
+  if(s.includes("183_athena_commando_m_modernmilitaryred"))return"Double Helix";
+  if(s.includes("113_athena_commando_m_blueace"))return"Royale Bomber";
+  if(s.includes("174_athena_commando_f_carbidewhite"))return"Eon";
+  if(s.includes("371_athena_commando_m_speedymidnight"))return"Dark Vertex";
+  if(s.includes("441_athena_commando_f_cyberfu"))return"Neo Versa";
+  if(s.includes("386_athena_commando_m_streetopsstealth"))return"Stealth Reflex";
+  if(s.includes("757_athena_commando_f_wildcat"))return"Wildcat";return`${param} ${id}`}
 function addTarget(list,param,id){const clean=decodeURIComponent(String(id||"")).trim().replace(/^cid_/i,"").split(/[&#]/)[0];if(!param||!clean)return;if(list.some(t=>t.param===param&&t.id===clean))return;list.push({param,id:clean,label:labelFor(param,clean)})}
 function parseTargets(text){
   const out=[];const raw=String(text||"");
@@ -237,20 +293,21 @@ function wire(root=document){
 }
 function prog(done,total){$("progress").classList.remove("hidden");const p=total?Math.round(done/total*100):0;$("progressText").textContent=p+"%";$("progressBar").style.width=p+"%"}
 async function scan(){
-  if(!targets.length){log("no targets");return}
+  const scanTargets=mergedScanTargets();
+  if(!scanTargets.length){log("no targets or exclusive presets selected");return}
   results=[];reqCount=0;renderFeed();status("SCANNING");$("scanBtn").disabled=true;
   const pages=Math.max(1,Math.min(50,Number($("pages").value)||5));
   const threads=Math.max(1,Math.min(8,Number($("threads").value)||3));
   const delay=Math.max(0,Math.min(15000,Number($("delay").value)||0));
   const tasks=[];
   for(let page=1;page<=pages;page++){
-    for(const target of targets){
+    for(const target of scanTargets){
       tasks.push(async()=>{if(delay)await sleep(delay);const data=await api("/fortnite",params(target,page));return{target,page,items:extractItems(data)}})
     }
   }
   const found=new Map();
   try{
-    log("scan start",{targets:targets.length,pages,order:$("order").value,api_only:true});
+    log("scan start",{manual_targets:targets.length,exclusive_mode:$("exclusiveMode")?.value||"off",scan_targets:scanTargets.length,pages,order:$("order").value,api_only:true});
     await pool(tasks,threads,(done,total,idx,res)=>{
       if(res.error){log("page error",{error:res.error.message});prog(done,total);return}
       for(const item of res.items){const id=idOf(item);if(!id)continue;const pack=found.get(id)||{summary:{},labels:[],rank:found.size};pack.summary={...pack.summary,...item};pack.labels=[...new Set([...pack.labels,res.target.label])];found.set(id,pack)}
@@ -272,6 +329,10 @@ function bind(){
   $("showBtn").onclick=()=>{const show=$("apiKey").type==="password";$("apiKey").type=show?"text":"password";$("showBtn").textContent=show?"HIDE":"SHOW"};
   $("testBtn").onclick=test;$("saveBtn").onclick=()=>{saveCfg();log("settings saved")};$("clearBtn").onclick=()=>{$("apiKey").value="";saveCfg()};
   $("scanBtn").onclick=scan;
+  if($("exclusiveMode")){
+    $("exclusiveMode").value=localStorage.getItem("wrota.exclusive.mode")||"off";
+    $("exclusiveMode").addEventListener("change",()=>{localStorage.setItem("wrota.exclusive.mode",$("exclusiveMode").value);log("exclusive mode",{mode:$("exclusiveMode").value,count:exclusiveTargets().length});});
+  }
   $("addTargetBtn").onclick=()=>{parseTargets($("targetInput").value).forEach(t=>addTarget(targets,t.param,t.id));$("targetInput").value="";renderTargets()};
   $("parseBulkBtn").onclick=()=>{parseTargets($("bulkTargets").value).forEach(t=>addTarget(targets,t.param,t.id));$("bulkTargets").value="";renderTargets()};
   $("ogBtn").onclick=()=>{targets=[...DEFAULT_TARGETS];renderTargets()};$("clearTargetsBtn").onclick=()=>{targets=[];renderTargets()};

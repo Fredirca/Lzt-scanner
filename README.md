@@ -1,4 +1,4 @@
-# Wrota Release v1.0.0
+# Wrota Release v1.1.0
 
 Dark-mode, API-only release build.
 
@@ -58,3 +58,38 @@ prod-api.lzt.market
 ```
 
 It does not proxy image URLs or web pages.
+
+
+## Exclusive skin search
+
+Release v1.1.0 adds an exclusive skin search setting.
+
+Modes:
+
+- Off
+- OG style exclusives
+- Promo / device exclusives
+- All exclusive presets
+
+When enabled, the selected preset skin filters are added during scan without cluttering the manual target list.
+
+Included preset IDs:
+
+```text
+030_athena_commando_m_halloween_og
+029_athena_commando_f_halloween_og
+028_athena_commando_f_og
+017_athena_commando_m_og
+175_athena_commando_m_celestial
+313_athena_commando_m_kpopfashion
+479_athena_commando_f_davinci
+434_athena_commando_f_stealthhonor
+342_athena_commando_m_streetracermetallic
+183_athena_commando_m_modernmilitaryred
+113_athena_commando_m_blueace
+174_athena_commando_f_carbidewhite
+371_athena_commando_m_speedymidnight
+441_athena_commando_f_cyberfu
+386_athena_commando_m_streetopsstealth
+757_athena_commando_f_wildcat
+```

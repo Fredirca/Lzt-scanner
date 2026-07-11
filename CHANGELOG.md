@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.0
+
+- Added exclusive skin search setting
+- Added OG style exclusive preset
+- Added promo/device exclusive preset
+- Preset filters are added at scan time without cluttering manual targets
+
 ## v1.0.0
 
 Release build.
