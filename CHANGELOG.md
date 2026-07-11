@@ -1,5 +1,32 @@
 # Changelog
 
+## v1.7.0
+
+- Reworked interface into a lobby-style UI
+- Removed non-essential information from result cards
+- Moved saved listings and debug log into lower drawers
+- Hid raw JSON by default
+- Made scan/watch actions the central focus
+
+## v1.6.0
+
+- Added browser watch mode
+- Added Start watch and Stop controls
+- Added sound alerts for newly detected listing IDs
+- Added watch interval setting
+- Added test sound button
+- Added watch status stat
+- Watch mode primes on first scan to avoid alerting existing listings
+
+## v1.5.0
+
+- Added regular price baseline system
+- Added median price per matched group
+- Added below-regular filter
+- Added biggest price gap sort
+- Added price check block to listing cards
+- Added regular price fields to copied summaries
+
 ## v1.4.0
 
 - Added in-app API key help panel

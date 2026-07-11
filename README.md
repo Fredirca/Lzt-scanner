@@ -1,4 +1,4 @@
-# Wrota Release v1.4.0
+# Wrota Release v1.7.0
 
 Dark-mode, API-only release build.
 
@@ -140,3 +140,57 @@ The guide explains:
 - Keep the token private
 
 The UI links to the public LZT Market API reference.
+
+
+## v1.5.0 regular price check
+
+This release adds a read-only regular price baseline system.
+
+How it works:
+
+- Uses scanned API listing prices only
+- Groups prices by matched target label
+- Calculates median regular price per group
+- Shows sample count and average
+- Flags listings below the median by the chosen threshold
+- Adds a "Below regular" filter
+- Adds a "Biggest price gap" sort
+- Adds regular price information to copied listing summaries
+
+This is a review/evaluation feature. It does not automate purchases, messaging, checkout, or seller contact.
+
+
+## v1.6.0 watch mode
+
+This release adds browser watch mode.
+
+Watch mode:
+
+- Re-scans the current filters while the browser tab stays open
+- Remembers listing IDs already seen
+- Primes itself on the first watch scan so existing listings do not trigger noise
+- Plays an in-browser sound when a new listing ID appears
+- Shows watch status in the stats bar
+- Lets the user set the scan interval
+- Lets the user enable/disable sound alerts
+- Includes a test sound button
+
+Notes:
+
+- Watch mode only runs while the browser tab is open.
+- Browser audio requires user interaction, so start watch or test sound from the page first.
+- This is read-only monitoring. It does not automate purchases, messaging, checkout, or seller contact.
+
+
+## v1.7.0 lobby UI
+
+This release trims the interface into a lobby-style scanner:
+
+- Fortnite-lobby-inspired layout without official assets or logos
+- Search and presets moved into one left panel
+- Main stage for scan / watch actions
+- Compact HUD stats
+- Results cards reduced to the important fields only
+- Saved listings and debug log moved into lower drawers
+- Raw JSON hidden by default
+- Same API-only, read-only logic

@@ -69,6 +69,13 @@ let saved=[];
 let compact=false;
 let reqCount=0;
 let lastReq=0;
+let watchTimer=null;
+let watchRunning=false;
+let watchBusy=false;
+let watchPrimed=false;
+let seenListingIds=new Set();
+let lastNewCount=0;
+let audioCtx=null;
 
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c]));
@@ -338,9 +345,133 @@ async function pool(tasks,limit,onDone){
   async function worker(){while(i<tasks.length){const idx=i++;let r;try{r=await tasks[idx]()}catch(e){r={error:e}}done++;onDone(done,tasks.length,idx,r)}}
   await Promise.all(Array.from({length:Math.max(1,Math.min(limit,tasks.length))},worker));
 }
+
+function priceNumber(r){return num(r?.price);}
+function median(values){
+  const xs=values.filter(v=>Number.isFinite(v)).sort((a,b)=>a-b);
+  if(!xs.length)return null;
+  const mid=Math.floor(xs.length/2);
+  return xs.length%2?xs[mid]:(xs[mid-1]+xs[mid])/2;
+}
+function avg(values){
+  const xs=values.filter(v=>Number.isFinite(v));
+  if(!xs.length)return null;
+  return xs.reduce((a,b)=>a+b,0)/xs.length;
+}
+function percentile(values,p){
+  const xs=values.filter(v=>Number.isFinite(v)).sort((a,b)=>a-b);
+  if(!xs.length)return null;
+  const idx=(xs.length-1)*p;
+  const lo=Math.floor(idx), hi=Math.ceil(idx);
+  if(lo===hi)return xs[lo];
+  return xs[lo]+(xs[hi]-xs[lo])*(idx-lo);
+}
+function minBaselineSamples(){
+  return Math.max(2,Math.min(50,Number($("baselineMinSamples")?.value)||3));
+}
+function discountThreshold(){
+  return Math.max(1,Math.min(90,Number($("discountThreshold")?.value)||25));
+}
+function priceCheckEnabled(){
+  return $("priceCheck")?.checked!==false;
+}
+function priceFmt(n){
+  return Number.isFinite(n)?`$${n.toFixed(2)}`:"Unknown";
+}
+function baselineMap(){
+  const groups=new Map();
+  for(const r of results){
+    const p=priceNumber(r);
+    if(!Number.isFinite(p)||p<=0)continue;
+    const labels=(r.labels&&r.labels.length)?r.labels:["All listings"];
+    for(const label of labels){
+      if(!groups.has(label))groups.set(label,[]);
+      groups.get(label).push(p);
+    }
+  }
+  const map=new Map();
+  for(const [label,prices] of groups.entries()){
+    const med=median(prices);
+    if(!Number.isFinite(med))continue;
+    map.set(label,{
+      label,
+      n:prices.length,
+      median:med,
+      average:avg(prices),
+      p25:percentile(prices,.25),
+      p75:percentile(prices,.75)
+    });
+  }
+  return map;
+}
+function priceBaselineFor(r){
+  if(!priceCheckEnabled())return null;
+  const p=priceNumber(r);
+  if(!Number.isFinite(p)||p<=0)return null;
+  const minN=minBaselineSamples();
+  const map=baselineMap();
+  const labels=(r.labels&&r.labels.length)?r.labels:["All listings"];
+  let best=null;
+  for(const label of labels){
+    const b=map.get(label);
+    if(!b||b.n<minN||!Number.isFinite(b.median)||b.median<=0)continue;
+    const gap=b.median-p;
+    const gapPct=(gap/b.median)*100;
+    const item={...b,price:p,gap,gapPct};
+    if(!best||item.gapPct>best.gapPct)best=item;
+  }
+  return best;
+}
+function isBelowRegular(r){
+  const b=priceBaselineFor(r);
+  return !!(b&&b.gapPct>=discountThreshold());
+}
+function priceCheckText(r){
+  const b=priceBaselineFor(r);
+  if(!b)return "Needs more samples";
+  const sign=b.gapPct>=0?"below":"above";
+  return `${Math.abs(b.gapPct).toFixed(0)}% ${sign} ${b.label} median`;
+}
+function priceCheckBlock(r){
+  if(!priceCheckEnabled())return "";
+  const b=priceBaselineFor(r);
+  if(!b){
+    return `<div class="price-check neutral"><b>Regular price</b><span>Needs more scanned samples for a reliable baseline.</span></div>`;
+  }
+  const below=b.gapPct>=discountThreshold();
+  const cls=below?"good":(b.gapPct>=0?"neutral":"high");
+  const title=below?"Below regular price":"Regular price check";
+  return `<div class="price-check ${cls}">
+    <b>${esc(title)}</b>
+    <span>${esc(priceFmt(b.price))} vs ${esc(priceFmt(b.median))} median · ${esc(Math.abs(b.gapPct).toFixed(0))}% ${b.gapPct>=0?"below":"above"} · ${esc(b.n)} samples · ${esc(b.label)}</span>
+  </div>`;
+}
+function renderBaselinePanel(){
+  const panel=$("baselinePanel");
+  if(!panel)return;
+  if(!priceCheckEnabled()||!results.length){
+    panel.classList.add("hidden");
+    panel.innerHTML="";
+    return;
+  }
+  const minN=minBaselineSamples();
+  const baselines=[...baselineMap().values()]
+    .filter(b=>b.n>=minN)
+    .sort((a,b)=>b.n-a.n||a.median-b.median)
+    .slice(0,10);
+  if(!baselines.length){
+    panel.classList.remove("hidden");
+    panel.innerHTML=`<div class="baseline-empty">Regular price check needs at least ${minN} price samples per matched group.</div>`;
+    return;
+  }
+  panel.classList.remove("hidden");
+  panel.innerHTML=`<div class="baseline-head"><b>Regular price baselines</b><span>median from scanned API results</span></div>
+    <div class="baseline-list">${baselines.map(b=>`<div><span>${esc(b.label)}</span><b>${esc(priceFmt(b.median))}</b><small>${esc(b.n)} samples · avg ${esc(priceFmt(b.average))}</small></div>`).join("")}</div>`;
+}
+
 function filter(){
-  const q=$("q").value.toLowerCase().trim(), min=num($("minPrice").value), max=num($("maxPrice").value), multi=$("multiOnly").checked;
-  return results.filter(r=>{const txt=[r.title,r.seller,r.country,r.apiText,...r.labels].join(" ").toLowerCase();const p=num(r.price);if(q&&!txt.includes(q))return false;if(min!==null&&(p===null||p<min))return false;if(max!==null&&(p===null||p>max))return false;if(multi&&r.labels.length<2)return false;return true});
+  const q=$("q").value.toLowerCase().trim(), min=num($("minPrice").value), max=num($("maxPrice").value), multi=$("multiOnly").checked, below=$("belowBaselineOnly")?.checked||false;
+  return results.filter(r=>{const txt=[r.title,r.seller,r.country,r.apiText,...r.labels].join(" ").toLowerCase();const p=num(r.price);if(q&&!txt.includes(q))return false;if(min!==null&&(p===null||p<min))return false;if(max!==null&&(p===null||p>max))return false;if(multi&&r.labels.length<2)return false;if(below&&!isBelowRegular(r))return false;return true});
 }
 function sortList(list){
   const s=$("sort").value, ord=$("order").value, arr=list.slice();
@@ -350,6 +481,7 @@ function sortList(list){
   else if(s==="price_desc")arr.sort((a,b)=>(num(b.price)??-Infinity)-(num(a.price)??-Infinity));
   else if(s==="matches_desc")arr.sort((a,b)=>b.labels.length-a.labels.length);
   else if(s==="skins_desc")arr.sort((a,b)=>(num(b.skins)??-Infinity)-(num(a.skins)??-Infinity));
+  else if(s==="price_gap_desc")arr.sort((a,b)=>(priceBaselineFor(b)?.gapPct??-Infinity)-(priceBaselineFor(a)?.gapPct??-Infinity));
   else if(ord==="pdate_to_up_upload"||ord==="pdate_to_up")arr.sort((a,b)=>uploadMs(a)-uploadMs(b)||a.rank-b.rank);
   else arr.sort(newest);
   return arr;
@@ -363,7 +495,7 @@ Email Changeable: ${bool(r.email)}
 
 Title: ${r.title}
 Seller: ${r.seller}
-Price: ${price(r.price)}
+Price: ${price(r.price)}\nRegular Price: ${priceBaselineFor(r)?priceFmt(priceBaselineFor(r).median):"Unknown"}\nPrice Check: ${priceCheckText(r)}
 Level: ${r.level}
 Country: ${r.country}
 Upload Date: ${dateText(uploadOf(r))}
@@ -377,38 +509,28 @@ function card(r){
       <div class="price">${esc(price(r.price))}</div>
     </div>
     <div class="info">
-      <div><span>SKINS</span><b>${esc(r.skins)}</b></div>
-      <div><span>EMAIL</span><b>${esc(bool(r.email))}</b></div>
-      <div><span>LEVEL</span><b>${esc(r.level)}</b></div>
-      <div><span>COUNTRY</span><b>${esc(r.country)}</b></div>
-      <div><span>UPLOAD</span><b>${esc(dateText(uploadOf(r)))}</b></div>
-      <div><span>AGE</span><b>${esc(age(r))}</b></div>
-      <div><span>MATCHES</span><b>${r.labels.length}</b></div>
-      <div><span>VIEWS</span><b>${esc(r.views||"")}</b></div>
+      <div><span>Skins</span><b>${esc(r.skins)}</b></div>
+      <div><span>Email</span><b>${esc(bool(r.email))}</b></div>
+      <div><span>Age</span><b>${esc(age(r))}</b></div>
+      <div><span>Matches</span><b>${r.labels.length}</b></div>
     </div>
-    <div class="api-grid">
-      <div><span>SELLER</span><b>${esc(r.seller)}</b></div>
-      <div><span>ORIGIN</span><b>${esc(r.itemOrigin||"")}</b></div>
-      <div><span>GUARANTEE</span><b>${esc(r.guarantee||"")}</b></div>
-      <div><span>LAST ACTIVITY</span><b>${esc(dateText(r.lastActivity))}</b></div>
-    </div>
-    <pre class="message">${esc(msg)}</pre>
-    <div class="actions"><a class="button" href="https://lzt.market/${esc(r.id)}/" target="_blank">OPEN</a><button data-copy="${esc(msg)}">COPY</button><button data-save="${esc(r.id)}">SAVE</button></div>
-    ${$("includeRaw")?.checked?`<details class="raw"><summary>FULL API JSON</summary><pre>${esc(JSON.stringify(r.raw,null,2))}</pre></details>`:""}
+    ${priceCheckBlock(r)}
+    <div class="actions"><a href="https://lzt.market/${esc(r.id)}/" target="_blank">Open</a><button data-copy="${esc(msg)}">Copy</button><button data-save="${esc(r.id)}">Save</button></div>
+    ${$("includeRaw")?.checked?`<details class="raw"><summary>API JSON</summary><pre>${esc(JSON.stringify(r.raw,null,2))}</pre></details>`:""}
   </article>`;
 }
 function renderStats(){const v=visible();$("statShown").textContent=v.length;$("statUnique").textContent=results.length;$("statHits").textContent=results.reduce((a,r)=>a+r.labels.length,0);$("statReq").textContent=reqCount;$("statSaved").textContent=saved.length}
-function renderFeed(){renderStats();const v=visible();const box=$("feed");if(!v.length){box.className="empty";box.innerHTML="<h3>No results</h3><p>Try relaxing filters or run another scan.</p>";return}box.className=compact?"cards compact":"cards";box.innerHTML=v.map(card).join("");wire(box)}
+function renderFeed(){renderStats();renderBaselinePanel();const v=visible();const box=$("feed");if(!v.length){box.className="empty";box.innerHTML="<h3>No results</h3><p>Try relaxing filters or run another scan.</p>";return}box.className=compact?"cards compact":"cards";box.innerHTML=v.map(card).join("");wire(box)}
 function renderSaved(){const box=$("saved");$("statSaved").textContent=saved.length;if(!saved.length){box.className="empty small-empty";box.innerHTML="<h3>No saved listings</h3>";return}box.className="cards compact";box.innerHTML=saved.map(card).join("");wire(box)}
 function wire(root=document){
   root.querySelectorAll("[data-copy]").forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.copy);log("copied")}catch{log("copy failed")}});
   root.querySelectorAll("[data-save]").forEach(b=>b.onclick=()=>{const r=results.find(x=>x.id===b.dataset.save);if(!r)return;if(!saved.some(x=>x.id===r.id))saved.unshift(r);saved=saved.slice(0,100);localStorage.setItem("wrota.api.saved",JSON.stringify(saved));renderSaved();renderStats()});
 }
 function prog(done,total){$("progress").classList.remove("hidden");const p=total?Math.round(done/total*100):0;$("progressText").textContent=p+"%";$("progressBar").style.width=p+"%"}
-async function scan(){
+async function scan(options={}){
   const scanTargets=mergedScanTargets();
   if(!scanTargets.length){log("no targets or exclusive presets selected");return}
-  results=[];reqCount=0;renderFeed();status("SCANNING");$("scanBtn").disabled=true;
+  results=[];reqCount=0;renderFeed();status(options.watch?"WATCHING":"SCANNING");if(!options.watch)$("scanBtn").disabled=true;
   const pages=Math.max(1,Math.min(50,Number($("pages").value)||5));
   const threads=Math.max(1,Math.min(8,Number($("threads").value)||3));
   const delay=Math.max(0,Math.min(15000,Number($("delay").value)||0));
@@ -430,11 +552,111 @@ async function scan(){
       const detailTasks=results.map(r=>async()=>await apiDetail(r));
       await pool(detailTasks,Math.min(threads,3),(done,total,idx,res)=>{if(res&&!res.error){const pos=results.findIndex(x=>x.id===res.id);if(pos>=0)results[pos]=res}renderFeed();prog(done,total)})
     }
-    renderFeed();status("DONE");log("scan complete",{unique:results.length,hits:results.reduce((a,r)=>a+r.labels.length,0),requests:reqCount});
+    renderFeed();if(!options.watch)status("DONE");log(options.watch?"watch scan complete":"scan complete",{unique:results.length,hits:results.reduce((a,r)=>a+r.labels.length,0),requests:reqCount});
   }catch(e){status("ERROR");log("scan failed",{error:e.message})}
-  finally{$("scanBtn").disabled=false;$("progress").classList.add("hidden")}
+  finally{if(!options.watch)$("scanBtn").disabled=false;$("progress").classList.add("hidden")}
 }
 async function test(){try{status("TESTING");await api("/",{locale:"en"});await api("/fortnite",{page:1,order:"pdate_to_down_upload",order_by:"pdate_to_down_upload",currency:"usd",locale:"en",fields_include:"*"});status("READY");log("api connection ok")}catch(e){status("ERROR");log("api test failed",{error:e.message})}}
+
+function watchIntervalMs(){
+  return Math.max(30,Math.min(3600,Number($("watchInterval")?.value)||90))*1000;
+}
+function setWatchUi(){
+  if($("watchBtn"))$("watchBtn").disabled=watchRunning;
+  if($("stopWatchBtn"))$("stopWatchBtn").disabled=!watchRunning;
+  if($("statWatch"))$("statWatch").textContent=watchRunning?"On":"Off";
+}
+async function ensureAudio(){
+  if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state==="suspended")await audioCtx.resume();
+  return audioCtx;
+}
+async function playAlertSound(){
+  if($("soundEnabled")?.checked===false)return;
+  try{
+    const ctx=await ensureAudio();
+    const now=ctx.currentTime;
+    const gain=ctx.createGain();
+    gain.gain.setValueAtTime(0.0001,now);
+    gain.gain.exponentialRampToValueAtTime(0.18,now+0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001,now+0.55);
+    gain.connect(ctx.destination);
+    const osc=ctx.createOscillator();
+    osc.type="sine";
+    osc.frequency.setValueAtTime(880,now);
+    osc.frequency.setValueAtTime(1175,now+0.18);
+    osc.connect(gain);
+    osc.start(now);
+    osc.stop(now+0.58);
+  }catch(e){
+    log("sound failed",{error:e.message});
+  }
+}
+function currentIds(){
+  return new Set(results.map(r=>String(r.id)).filter(Boolean));
+}
+async function handleWatchResults(){
+  const ids=currentIds();
+  if(!watchPrimed){
+    seenListingIds=ids;
+    watchPrimed=true;
+    lastNewCount=0;
+    log("watch primed",{seen:seenListingIds.size});
+    return;
+  }
+  const fresh=[];
+  for(const id of ids){
+    if(!seenListingIds.has(id))fresh.push(id);
+  }
+  ids.forEach(id=>seenListingIds.add(id));
+  lastNewCount=fresh.length;
+  if(fresh.length){
+    log("new listings detected",{count:fresh.length,ids:fresh.slice(0,20)});
+    await playAlertSound();
+    status(`NEW ${fresh.length}`);
+    document.title=`(${fresh.length}) New listings · Wrota`;
+  }
+}
+async function watchTick(){
+  if(!watchRunning||watchBusy)return;
+  watchBusy=true;
+  try{
+    status("WATCHING");
+    await scan({watch:true});
+    await handleWatchResults();
+    if(watchRunning)status(lastNewCount?`NEW ${lastNewCount}`:"WATCHING");
+  }catch(e){
+    log("watch tick failed",{error:e.message});
+    if(watchRunning)status("WATCH ERROR");
+  }finally{
+    watchBusy=false;
+  }
+}
+async function startWatch(){
+  if(watchRunning)return;
+  watchRunning=true;
+  watchPrimed=false;
+  lastNewCount=0;
+  document.title="Watching · Wrota";
+  setWatchUi();
+  localStorage.setItem("wrota.watch.interval",String($("watchInterval")?.value||90));
+  localStorage.setItem("wrota.watch.sound",$("soundEnabled")?.checked?"1":"0");
+  try{await ensureAudio()}catch{}
+  log("watch started",{interval_seconds:Math.round(watchIntervalMs()/1000),sound:$("soundEnabled")?.checked!==false});
+  await watchTick();
+  watchTimer=setInterval(watchTick,watchIntervalMs());
+}
+function stopWatch(){
+  watchRunning=false;
+  watchBusy=false;
+  if(watchTimer)clearInterval(watchTimer);
+  watchTimer=null;
+  document.title="Wrota";
+  setWatchUi();
+  status("READY");
+  log("watch stopped");
+}
+
 function exportJson(name,data){const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=name;a.click();URL.revokeObjectURL(url)}
 function bind(){
   loadCfg();try{saved=JSON.parse(localStorage.getItem("wrota.api.saved")||"[]")}catch{}
@@ -442,7 +664,15 @@ function bind(){
   renderTargets();renderSkinSearch();renderFeed();renderSaved();
   $("showBtn").onclick=()=>{const show=$("apiKey").type==="password";$("apiKey").type=show?"text":"password";$("showBtn").textContent=show?"HIDE":"SHOW"};
   $("testBtn").onclick=test;$("saveBtn").onclick=()=>{saveCfg();log("settings saved")};$("clearBtn").onclick=()=>{$("apiKey").value="";saveCfg()};
-  $("scanBtn").onclick=scan;
+  $("scanBtn").onclick=()=>scan();
+  if($("watchBtn"))$("watchBtn").onclick=startWatch;
+  if($("stopWatchBtn"))$("stopWatchBtn").onclick=stopWatch;
+  if($("testSoundBtn"))$("testSoundBtn").onclick=playAlertSound;
+  if($("watchInterval"))$("watchInterval").value=localStorage.getItem("wrota.watch.interval")||$("watchInterval").value;
+  if($("soundEnabled"))$("soundEnabled").checked=(localStorage.getItem("wrota.watch.sound")||"1")==="1";
+  if($("watchInterval"))$("watchInterval").addEventListener("change",()=>localStorage.setItem("wrota.watch.interval",$("watchInterval").value));
+  if($("soundEnabled"))$("soundEnabled").addEventListener("change",()=>localStorage.setItem("wrota.watch.sound",$("soundEnabled").checked?"1":"0"));
+  setWatchUi();
   if($("skinSearchInput")){
     $("skinSearchInput").addEventListener("input",renderSkinSearch);
     $("skinSearchInput").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();addSkinTextQuery($("skinSearchInput").value);$("skinSearchInput").value="";renderSkinSearch();}});
@@ -457,9 +687,9 @@ function bind(){
   $("addTargetBtn").onclick=()=>{parseTargets($("targetInput").value).forEach(t=>addTarget(targets,t.param,t.id));$("targetInput").value="";renderTargets()};
   $("parseBulkBtn").onclick=()=>{parseTargets($("bulkTargets").value).forEach(t=>addTarget(targets,t.param,t.id));$("bulkTargets").value="";renderTargets()};
   $("ogBtn").onclick=()=>{targets=[...DEFAULT_TARGETS];renderTargets()};$("clearTargetsBtn").onclick=()=>{targets=[];renderTargets()};
-  ["q","minPrice","maxPrice","sort","multiOnly","includeRaw"].forEach(id=>$(id).addEventListener("input",renderFeed));
-  ["sort","multiOnly","includeRaw"].forEach(id=>$(id).addEventListener("change",renderFeed));
-  $("resetFiltersBtn").onclick=()=>{$("q").value="";$("minPrice").value="";$("maxPrice").value="";$("sort").value="api";$("multiOnly").checked=false;renderFeed()};
+  ["q","minPrice","maxPrice","sort","multiOnly","includeRaw","belowBaselineOnly","priceCheck","discountThreshold","baselineMinSamples"].forEach(id=>{const el=$(id);if(el)el.addEventListener("input",renderFeed)});
+  ["sort","multiOnly","includeRaw","belowBaselineOnly","priceCheck","discountThreshold","baselineMinSamples"].forEach(id=>{const el=$(id);if(el)el.addEventListener("change",renderFeed)});
+  $("resetFiltersBtn").onclick=()=>{$("q").value="";$("minPrice").value="";$("maxPrice").value="";$("sort").value="api";$("multiOnly").checked=false;if($("belowBaselineOnly"))$("belowBaselineOnly").checked=false;renderFeed()};
   $("compactBtn").onclick=()=>{compact=!compact;$("compactBtn").textContent=compact?"CARDS":"COMPACT";renderFeed()};
   $("copyBtn").onclick=async()=>{try{await navigator.clipboard.writeText(visible().map(message).join("\n\n---\n\n"));log("copied visible")}catch{log("copy failed")}};
   $("exportBtn").onclick=()=>exportJson("wrota-api-listings.json",visible());
