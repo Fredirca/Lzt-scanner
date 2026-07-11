@@ -378,6 +378,85 @@ function priceCheckEnabled(){
 function priceFmt(n){
   return Number.isFinite(n)?`$${n.toFixed(2)}`:"Unknown";
 }
+
+function rareStackMode(){
+  return $("rareStackMode")?.value||"stacked";
+}
+function listingRareLabels(r){
+  const labels=(r.labels||[]).filter(x=>x&&String(x).trim());
+  return [...new Set(labels)];
+}
+function rareUnitBaselines(){
+  const map=baselineMap();
+  const minN=minBaselineSamples();
+  return [...map.values()].filter(b=>b.n>=minN&&Number.isFinite(b.median)&&b.median>0);
+}
+function rareStackBaselineFor(r){
+  if(!priceCheckEnabled())return null;
+  const p=priceNumber(r);
+  if(!Number.isFinite(p)||p<=0)return null;
+
+  const labels=listingRareLabels(r);
+  if(!labels.length)return null;
+
+  const map=baselineMap();
+  const minN=minBaselineSamples();
+  const parts=[];
+
+  for(const label of labels){
+    const b=map.get(label);
+    if(!b||b.n<minN||!Number.isFinite(b.median)||b.median<=0)continue;
+    parts.push({...b});
+  }
+
+  if(!parts.length)return null;
+
+  // Best single rare = previous simple behavior.
+  if(rareStackMode()==="best"){
+    const best=parts
+      .map(b=>({...b,price:p,gap:b.median-p,gapPct:((b.median-p)/b.median)*100,parts:[b]}))
+      .sort((a,b)=>b.gapPct-a.gapPct)[0];
+    return best||null;
+  }
+
+  // Stacked value = account has multiple rare hits, so compare against a combined baseline.
+  // To avoid double-counting the shared base account value too aggressively, the biggest
+  // rare median counts fully, then extra rare medians count with a diminishing stack weight.
+  const sorted=parts.slice().sort((a,b)=>b.median-a.median);
+  let stacked=0;
+  sorted.forEach((b,i)=>{
+    const weight=i===0?1:Math.max(0.35,0.72-(i-1)*0.10);
+    stacked+=b.median*weight;
+  });
+
+  const gap=stacked-p;
+  const gapPct=(gap/stacked)*100;
+
+  return {
+    label:`${parts.length} rare match${parts.length===1?"":"es"}`,
+    n:Math.min(...parts.map(x=>x.n)),
+    median:stacked,
+    average:null,
+    p25:null,
+    p75:null,
+    price:p,
+    gap,
+    gapPct,
+    parts:sorted
+  };
+}
+function rareStackText(r){
+  const b=rareStackBaselineFor(r);
+  if(!b)return "Needs more samples";
+  const partText=(b.parts||[]).map(x=>x.label).slice(0,4).join(" + ");
+  const more=(b.parts||[]).length>4?` + ${(b.parts||[]).length-4} more`:"";
+  return `${priceFmt(b.median)} stack baseline · ${Math.abs(b.gapPct).toFixed(0)}% ${b.gapPct>=0?"below":"above"} · ${partText}${more}`;
+}
+function rareStackValue(r){
+  const b=rareStackBaselineFor(r);
+  return b&&Number.isFinite(b.median)?b.median:0;
+}
+
 function baselineMap(){
   const groups=new Map();
   for(const r of results){
@@ -405,45 +484,29 @@ function baselineMap(){
   return map;
 }
 function priceBaselineFor(r){
-  if(!priceCheckEnabled())return null;
-  const p=priceNumber(r);
-  if(!Number.isFinite(p)||p<=0)return null;
-  const minN=minBaselineSamples();
-  const map=baselineMap();
-  const labels=(r.labels&&r.labels.length)?r.labels:["All listings"];
-  let best=null;
-  for(const label of labels){
-    const b=map.get(label);
-    if(!b||b.n<minN||!Number.isFinite(b.median)||b.median<=0)continue;
-    const gap=b.median-p;
-    const gapPct=(gap/b.median)*100;
-    const item={...b,price:p,gap,gapPct};
-    if(!best||item.gapPct>best.gapPct)best=item;
-  }
-  return best;
+  return rareStackBaselineFor(r);
 }
 function isBelowRegular(r){
   const b=priceBaselineFor(r);
   return !!(b&&b.gapPct>=discountThreshold());
 }
 function priceCheckText(r){
-  const b=priceBaselineFor(r);
-  if(!b)return "Needs more samples";
-  const sign=b.gapPct>=0?"below":"above";
-  return `${Math.abs(b.gapPct).toFixed(0)}% ${sign} ${b.label} median`;
+  return rareStackText(r);
 }
 function priceCheckBlock(r){
   if(!priceCheckEnabled())return "";
-  const b=priceBaselineFor(r);
+  const b=rareStackBaselineFor(r);
   if(!b){
-    return `<div class="price-check neutral"><b>Regular price</b><span>Needs more scanned samples for a reliable baseline.</span></div>`;
+    return `<div class="price-check neutral"><b>Rare stack value</b><span>Needs more scanned samples for this rare combination.</span></div>`;
   }
   const below=b.gapPct>=discountThreshold();
   const cls=below?"good":(b.gapPct>=0?"neutral":"high");
-  const title=below?"Below regular price":"Regular price check";
+  const title=below?"Below stacked rare value":"Rare stack value";
+  const pieces=(b.parts||[]).map(x=>`${x.label}: ${priceFmt(x.median)}`).join(" · ");
   return `<div class="price-check ${cls}">
     <b>${esc(title)}</b>
-    <span>${esc(priceFmt(b.price))} vs ${esc(priceFmt(b.median))} median · ${esc(Math.abs(b.gapPct).toFixed(0))}% ${b.gapPct>=0?"below":"above"} · ${esc(b.n)} samples · ${esc(b.label)}</span>
+    <span>${esc(priceFmt(b.price))} vs ${esc(priceFmt(b.median))} stack baseline · ${esc(Math.abs(b.gapPct).toFixed(0))}% ${b.gapPct>=0?"below":"above"} · ${esc(b.parts?.length||1)} rare match${(b.parts?.length||1)===1?"":"es"}</span>
+    ${pieces?`<small>${esc(pieces)}</small>`:""}
   </div>`;
 }
 function renderBaselinePanel(){
@@ -461,11 +524,11 @@ function renderBaselinePanel(){
     .slice(0,10);
   if(!baselines.length){
     panel.classList.remove("hidden");
-    panel.innerHTML=`<div class="baseline-empty">Regular price check needs at least ${minN} price samples per matched group.</div>`;
+    panel.innerHTML=`<div class="baseline-empty">Rare stack pricing needs at least ${minN} price samples per matched group.</div>`;
     return;
   }
   panel.classList.remove("hidden");
-  panel.innerHTML=`<div class="baseline-head"><b>Regular price baselines</b><span>median from scanned API results</span></div>
+  panel.innerHTML=`<div class="baseline-head"><b>Rare price baselines</b><span>median per rare match from scanned results</span></div>
     <div class="baseline-list">${baselines.map(b=>`<div><span>${esc(b.label)}</span><b>${esc(priceFmt(b.median))}</b><small>${esc(b.n)} samples · avg ${esc(priceFmt(b.average))}</small></div>`).join("")}</div>`;
 }
 
@@ -482,6 +545,7 @@ function sortList(list){
   else if(s==="matches_desc")arr.sort((a,b)=>b.labels.length-a.labels.length);
   else if(s==="skins_desc")arr.sort((a,b)=>(num(b.skins)??-Infinity)-(num(a.skins)??-Infinity));
   else if(s==="price_gap_desc")arr.sort((a,b)=>(priceBaselineFor(b)?.gapPct??-Infinity)-(priceBaselineFor(a)?.gapPct??-Infinity));
+  else if(s==="rare_stack_desc")arr.sort((a,b)=>rareStackValue(b)-rareStackValue(a));
   else if(ord==="pdate_to_up_upload"||ord==="pdate_to_up")arr.sort((a,b)=>uploadMs(a)-uploadMs(b)||a.rank-b.rank);
   else arr.sort(newest);
   return arr;
@@ -512,7 +576,7 @@ function card(r){
       <div><span>Skins</span><b>${esc(r.skins)}</b></div>
       <div><span>Email</span><b>${esc(bool(r.email))}</b></div>
       <div><span>Age</span><b>${esc(age(r))}</b></div>
-      <div><span>Matches</span><b>${r.labels.length}</b></div>
+      <div><span>Rare stack</span><b>${r.labels.length}x</b></div>
     </div>
     ${priceCheckBlock(r)}
     <div class="actions"><a href="https://lzt.market/${esc(r.id)}/" target="_blank">Open</a><button data-copy="${esc(msg)}">Copy</button><button data-save="${esc(r.id)}">Save</button></div>

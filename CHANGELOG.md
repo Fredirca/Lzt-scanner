@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.9.0
+
+- Redesigned the website into a Fortnite-lobby-inspired layout
+- Added local lobby background from supplied reference image
+- Added top navigation bar, left search panel, center stage, and right play panel
+- Removed more visible technical clutter from the main screen
+- Kept API-only scanner, watch mode, and rare stack pricing
+
+## v1.8.0
+
+- Added rare stack pricing
+- Accounts with multiple rare matches now get a combined baseline
+- Added diminishing-weight stack valuation to avoid simple double-counting
+- Added rare stack mode setting
+- Added most rare value sort
+- Result cards now show rare stack count
+
 ## v1.7.0
 
 - Reworked interface into a lobby-style UI

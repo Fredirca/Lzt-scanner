@@ -3,202 +3,166 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Wrota — Lobby Release v1.7.0</title>
-  <meta name="description" content="Lobby-style API-only listing scanner.">
-  <link rel="stylesheet" href="styles.css?v=1.7.0">
+  <title>Wrota — Lobby Theme v1.9.0</title>
+  <meta name="description" content="Fortnite-lobby-inspired API-only listing scanner.">
+  <link rel="stylesheet" href="styles.css?v=1.9.0">
 </head>
 <body>
-  <main class="app">
-    <header class="lobby-top">
-      <div class="brand">
-        <div class="logo">W</div>
-        <div>
-          <h1>Wrota</h1>
-          <p>Listing scanner lobby</p>
-        </div>
+  <main class="game">
+    <nav class="top-nav">
+      <div class="brand-block">
+        <div class="brand-logo">WROTA</div>
+        <div class="season-tag">RARE STACK SCANNER</div>
       </div>
 
-      <div class="quick-status">
+      <div class="tabs">
+        <span class="active">LOBBY</span>
+        <span>SEARCH</span>
+        <span>WATCH</span>
+        <span>DEALS</span>
+        <span>SAVED</span>
+      </div>
+
+      <div class="account-strip">
         <span id="status" class="status">READY</span>
-        <span class="version">v1.7.0</span>
+        <span class="version">v1.9.0</span>
       </div>
-    </header>
+    </nav>
 
-    <section class="lobby">
-      <aside class="side-panel">
-        <div class="panel-title">Login</div>
-
-        <input id="proxyUrl" type="hidden">
-
-        <label>
-          <span>API key</span>
-          <input id="apiKey" type="password" autocomplete="current-password" placeholder="Paste token">
-        </label>
-
-        <div class="button-grid">
-          <button id="showBtn" class="soft-btn">Show</button>
-          <button id="testBtn" class="soft-btn">Test</button>
-          <button id="saveBtn" class="soft-btn">Save</button>
-          <button id="clearBtn" class="soft-btn danger">Clear</button>
-        </div>
-
-        <details class="mini-help">
-          <summary>Get API key</summary>
-          <ol>
-            <li>Log in to LZT Market.</li>
-            <li>Open account settings.</li>
-            <li>Find API / token settings.</li>
-            <li>Copy token, paste here, press Test.</li>
-          </ol>
-          <p>Keep it private. Do not commit it to GitHub.</p>
-          <a href="https://lzt-market.readme.io/reference" target="_blank" rel="noopener">API docs</a>
-        </details>
-
-        <div class="divider"></div>
-
-        <div class="panel-title">Search</div>
-
-        <label>
-          <span>Skin search</span>
-          <div class="search-row">
-            <input id="skinSearchInput" placeholder="Galaxy, Wildcat, Renegade Raider...">
-            <button id="skinSearchApplyBtn" class="soft-btn">Add</button>
-          </div>
-        </label>
-
-        <div id="skinSearchResults" class="skin-results"></div>
-
-        <label class="preset-label">
-          <span>Preset</span>
-          <select id="exclusiveMode">
-            <option value="off">Off</option>
-            <option value="og">OG exclusives</option>
-            <option value="promo">Promo/device exclusives</option>
-            <option value="all">All exclusives</option>
-          </select>
-        </label>
-
-        <details class="mini-help">
-          <summary>Manual filters</summary>
-          <div class="target-input">
-            <input id="targetInput" placeholder="skin[]=... or cosmetic ID">
-            <button id="addTargetBtn" class="soft-btn">Add</button>
+    <section class="lobby-screen">
+      <aside class="quest-panel">
+        <section class="quest-card login-card">
+          <div class="panel-heading">
+            <span>LOGIN</span>
+            <b>API ACCESS</b>
           </div>
 
-          <details class="tiny-list" open>
-            <summary>Manual targets <b id="targetCount">0</b></summary>
-            <div id="targetList" class="targets"></div>
+          <input id="proxyUrl" type="hidden">
+
+          <label>
+            <span>API key</span>
+            <input id="apiKey" type="password" autocomplete="current-password" placeholder="Paste token">
+          </label>
+
+          <div class="mini-actions">
+            <button id="showBtn">SHOW</button>
+            <button id="testBtn">TEST</button>
+            <button id="saveBtn">SAVE</button>
+            <button id="clearBtn" class="danger">CLEAR</button>
+          </div>
+
+          <details class="fold">
+            <summary>HOW TO GET API KEY</summary>
+            <ol>
+              <li>Log in to LZT Market.</li>
+              <li>Open account settings.</li>
+              <li>Find API/token settings.</li>
+              <li>Copy token, paste here, press Test.</li>
+            </ol>
+            <p>Keep your token private.</p>
+            <a href="https://lzt-market.readme.io/reference" target="_blank" rel="noopener">Open API docs</a>
+          </details>
+        </section>
+
+        <section class="quest-card search-card">
+          <div class="panel-heading">
+            <span>DAILY SCAN</span>
+            <b>SKIN TARGET</b>
+          </div>
+
+          <label>
+            <span>Search skin</span>
+            <div class="search-line">
+              <input id="skinSearchInput" placeholder="Galaxy, Wildcat, Renegade Raider...">
+              <button id="skinSearchApplyBtn">ADD</button>
+            </div>
+          </label>
+
+          <div id="skinSearchResults" class="skin-results"></div>
+
+          <label class="preset">
+            <span>Exclusive preset</span>
+            <select id="exclusiveMode">
+              <option value="off">Off</option>
+              <option value="og">OG exclusives</option>
+              <option value="promo">Promo / device exclusives</option>
+              <option value="all">All exclusives</option>
+            </select>
+          </label>
+
+          <details class="fold">
+            <summary>MANUAL FILTERS</summary>
+            <div class="search-line">
+              <input id="targetInput" placeholder="skin[]=... or cosmetic ID">
+              <button id="addTargetBtn">ADD</button>
+            </div>
+
+            <details class="small-list" open>
+              <summary>Manual targets <b id="targetCount">0</b></summary>
+              <div id="targetList" class="targets"></div>
+            </details>
+
+            <textarea id="bulkTargets" rows="3" placeholder="Bulk paste targets"></textarea>
+
+            <div class="mini-actions two">
+              <button id="parseBulkBtn">PARSE</button>
+              <button id="clearTargetsBtn" class="danger">CLEAR</button>
+            </div>
           </details>
 
-          <textarea id="bulkTargets" rows="3" placeholder="Bulk paste targets"></textarea>
-          <div class="button-grid two">
-            <button id="parseBulkBtn" class="soft-btn">Parse</button>
-            <button id="clearTargetsBtn" class="soft-btn danger">Clear</button>
-          </div>
-        </details>
-
-        <details class="tiny-list applied" open>
-          <summary>Active skin searches <b id="skinQueryCount">0</b></summary>
-          <div id="skinQueryList" class="targets"></div>
-        </details>
+          <details class="small-list applied" open>
+            <summary>Active searches <b id="skinQueryCount">0</b></summary>
+            <div id="skinQueryList" class="targets"></div>
+          </details>
+        </section>
       </aside>
 
-      <section class="stage">
-        <div class="stage-card">
-          <div class="stage-copy">
-            <span class="mode">SCAN MODE</span>
-            <h2>Find new and underpriced listings</h2>
-            <p>API-only. No images. No scraping. Watch mode can alert you when a new listing appears.</p>
+      <section class="center-stage">
+        <div class="mode-card">
+          <div class="mode-copy">
+            <span class="eyebrow">MATCHMAKING</span>
+            <h1>RARE ACCOUNT SCAN</h1>
+            <p>API-only scanning for new listings, rare stacks, and below-regular price matches.</p>
           </div>
 
-          <div class="play-actions">
-            <button id="scanBtn" class="play-btn">Run scan</button>
-            <button id="watchBtn" class="watch-btn">Start watch</button>
-            <button id="stopWatchBtn" class="stop-btn" disabled>Stop</button>
+          <div class="platform">
+            <div class="beam"></div>
+            <div class="avatar-card">
+              <div class="avatar-head">SCAN READY</div>
+              <div class="avatar-body">
+                <div class="avatar"></div>
+              </div>
+              <div class="avatar-foot">No images · No scraping · Read-only</div>
+            </div>
+            <div class="ring ring-a"></div>
+            <div class="ring ring-b"></div>
           </div>
         </div>
 
-        <div class="hud">
+        <div class="party-slots">
           <div><span>Shown</span><b id="statShown">0</b></div>
           <div><span>Unique</span><b id="statUnique">0</b></div>
           <div><span>Hits</span><b id="statHits">0</b></div>
-          <div><span>Requests</span><b id="statReq">0</b></div>
+          <div><span>Req</span><b id="statReq">0</b></div>
           <div><span>Saved</span><b id="statSaved">0</b></div>
           <div><span>Watch</span><b id="statWatch">Off</b></div>
         </div>
 
-        <section class="controls-card">
-          <div class="control-row">
-            <label>
-              <span>Sort</span>
-              <select id="order">
-                <option value="pdate_to_down_upload">Newest uploaded</option>
-                <option value="pdate_to_up_upload">Oldest uploaded</option>
-                <option value="price_to_up">Cheapest first</option>
-                <option value="price_to_down">Highest price</option>
-                <option value="pdate_to_down">Newest listed</option>
-                <option value="pdate_to_up">Oldest listed</option>
-              </select>
-            </label>
-
-            <label>
-              <span>Pages</span>
-              <input id="pages" type="number" min="1" max="50" value="5">
-            </label>
-
-            <label>
-              <span>Watch every</span>
-              <input id="watchInterval" type="number" min="30" max="3600" value="90">
-            </label>
-
-            <label class="toggle"><input id="soundEnabled" type="checkbox" checked> Sound</label>
-            <button id="testSoundBtn" class="soft-btn">Test</button>
-          </div>
-
-          <details class="mini-help advanced">
-            <summary>Advanced</summary>
-            <div class="control-row">
-              <label>
-                <span>Threads</span>
-                <input id="threads" type="number" min="1" max="8" value="3">
-              </label>
-              <label>
-                <span>Delay ms</span>
-                <input id="delay" type="number" min="0" max="15000" value="250">
-              </label>
-              <label class="toggle"><input id="apiDetails" type="checkbox" checked> Details</label>
-              <label class="toggle"><input id="includeRaw" type="checkbox"> Raw JSON</label>
-            </div>
-
-            <div class="control-row price-tools">
-              <label class="toggle"><input id="priceCheck" type="checkbox" checked> Regular price check</label>
-              <label>
-                <span>Below by %</span>
-                <input id="discountThreshold" type="number" min="1" max="90" value="25">
-              </label>
-              <label>
-                <span>Min samples</span>
-                <input id="baselineMinSamples" type="number" min="2" max="50" value="3">
-              </label>
-            </div>
-          </details>
-        </section>
-
-        <section class="results-shell">
-          <div class="results-head">
+        <section class="results-board">
+          <div class="board-head">
             <div>
-              <span class="mode">MATCHES</span>
-              <h3>Results</h3>
+              <span>LOCKER MATCHES</span>
+              <h2>Results</h2>
             </div>
-            <div class="result-actions">
-              <button id="resetFiltersBtn" class="soft-btn">Reset</button>
-              <button id="compactBtn" class="soft-btn">Compact</button>
-              <button id="copyBtn" class="soft-btn">Copy</button>
-              <button id="exportBtn" class="soft-btn">Export</button>
+            <div class="board-actions">
+              <button id="resetFiltersBtn">RESET</button>
+              <button id="compactBtn">COMPACT</button>
+              <button id="copyBtn">COPY</button>
+              <button id="exportBtn">EXPORT</button>
             </div>
           </div>
 
-          <div class="filters">
+          <div class="filter-bar">
             <input id="q" placeholder="Filter results">
             <input id="minPrice" type="number" min="0" placeholder="Min $">
             <input id="maxPrice" type="number" min="0" placeholder="Max $">
@@ -210,6 +174,7 @@
               <option value="matches_desc">Most matches</option>
               <option value="skins_desc">Most skins</option>
               <option value="price_gap_desc">Biggest deal</option>
+              <option value="rare_stack_desc">Most rare value</option>
             </select>
             <label class="toggle"><input id="multiOnly" type="checkbox"> Multi</label>
             <label class="toggle"><input id="belowBaselineOnly" type="checkbox"> Deals</label>
@@ -223,19 +188,98 @@
           <div id="baselinePanel" class="baseline-panel hidden"></div>
 
           <div id="feed" class="empty">
-            <h3>Ready up</h3>
+            <h3>READY UP</h3>
             <p>Add a skin or preset, then run a scan.</p>
           </div>
         </section>
       </section>
+
+      <aside class="play-panel">
+        <section class="play-box">
+          <div class="play-mode">SOLO SCAN</div>
+          <button id="scanBtn" class="play-button">SCAN</button>
+          <button id="watchBtn" class="watch-button">START WATCH</button>
+          <button id="stopWatchBtn" class="stop-button" disabled>STOP</button>
+        </section>
+
+        <section class="queue-card">
+          <div class="panel-heading">
+            <span>QUEUE</span>
+            <b>SETTINGS</b>
+          </div>
+
+          <label>
+            <span>Sort from API</span>
+            <select id="order">
+              <option value="pdate_to_down_upload">Newest uploaded</option>
+              <option value="pdate_to_up_upload">Oldest uploaded</option>
+              <option value="price_to_up">Cheapest first</option>
+              <option value="price_to_down">Highest price</option>
+              <option value="pdate_to_down">Newest listed</option>
+              <option value="pdate_to_up">Oldest listed</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Pages</span>
+            <input id="pages" type="number" min="1" max="50" value="5">
+          </label>
+
+          <label>
+            <span>Watch every seconds</span>
+            <input id="watchInterval" type="number" min="30" max="3600" value="90">
+          </label>
+
+          <div class="toggle-row">
+            <label class="toggle"><input id="soundEnabled" type="checkbox" checked> Sound</label>
+            <button id="testSoundBtn">TEST</button>
+          </div>
+
+          <details class="fold">
+            <summary>ADVANCED SETTINGS</summary>
+
+            <label>
+              <span>Threads</span>
+              <input id="threads" type="number" min="1" max="8" value="3">
+            </label>
+
+            <label>
+              <span>Delay ms</span>
+              <input id="delay" type="number" min="0" max="15000" value="250">
+            </label>
+
+            <label class="toggle"><input id="apiDetails" type="checkbox" checked> API details</label>
+            <label class="toggle"><input id="includeRaw" type="checkbox"> Raw JSON</label>
+            <label class="toggle"><input id="priceCheck" type="checkbox" checked> Rare price check</label>
+
+            <label>
+              <span>Below by %</span>
+              <input id="discountThreshold" type="number" min="1" max="90" value="25">
+            </label>
+
+            <label>
+              <span>Min samples</span>
+              <input id="baselineMinSamples" type="number" min="2" max="50" value="3">
+            </label>
+
+            <label>
+              <span>Rare stack</span>
+              <select id="rareStackMode">
+                <option value="stacked" selected>Stacked value</option>
+                <option value="best">Best single rare</option>
+              </select>
+            </label>
+          </details>
+        </section>
+      </aside>
     </section>
 
-    <section class="lower-drawer">
+    <section class="drawer-row">
       <details>
-        <summary>Saved listings</summary>
+        <summary>SAVED LISTINGS</summary>
         <div class="drawer-actions">
-          <button id="exportSavedBtn" class="soft-btn">Export saved</button>
-          <button id="clearSavedBtn" class="soft-btn danger">Clear saved</button>
+          <button id="exportSavedBtn">EXPORT SAVED</button>
+          <button id="clearSavedBtn" class="danger">CLEAR SAVED</button>
         </div>
         <div id="saved" class="empty small-empty">
           <h3>No saved listings</h3>
@@ -243,18 +287,13 @@
       </details>
 
       <details>
-        <summary>Debug log</summary>
-        <button id="clearLogBtn" class="soft-btn">Clear log</button>
+        <summary>DEBUG LOG</summary>
+        <button id="clearLogBtn">CLEAR LOG</button>
         <pre id="debugLog" class="log"></pre>
       </details>
     </section>
-
-    <footer class="footer">
-      <span>Wrota v1.7.0</span>
-      <span>Lobby UI · API-only · no images · no scraping</span>
-    </footer>
   </main>
 
-  <script src="app.js?v=1.7.0"></script>
+  <script src="app.js?v=1.9.0"></script>
 </body>
 </html>

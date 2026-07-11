@@ -1,4 +1,4 @@
-# Wrota Release v1.7.0
+# Wrota Release v1.9.0
 
 Dark-mode, API-only release build.
 
@@ -194,3 +194,51 @@ This release trims the interface into a lobby-style scanner:
 - Saved listings and debug log moved into lower drawers
 - Raw JSON hidden by default
 - Same API-only, read-only logic
+
+
+## v1.8.0 rare stack pricing
+
+This release fixes valuation for listings with multiple rare matches.
+
+Instead of comparing a listing with several rare items against only one matching skin, Wrota now builds a stacked rare-value baseline:
+
+- Finds the median price for each matched rare item from scanned API results
+- Counts the strongest rare match fully
+- Adds extra rare matches with a diminishing stack weight to avoid over-counting shared account value
+- Compares the listing price against the combined rare stack baseline
+- Shows how many rare matches are being valued
+- Adds "Most rare value" sorting
+
+Modes:
+
+- Stacked value: combined rare match value
+- Best single rare: old/simple comparison against the strongest single match
+
+This remains read-only and only uses API listing data.
+
+
+## v1.9.0 Fortnite-lobby-inspired website theme
+
+This release redesigns the website to match the lobby references supplied by the user.
+
+Design changes:
+
+- Full-screen lobby scene background from the supplied reference image
+- Top navigation bar inspired by older game lobby menus
+- Left-side search / daily scan panel
+- Center stage with scan-ready character-platform style block
+- Right-side play/watch panel
+- Bottom result board with compact listing cards
+- Saved listings and debug log moved into drawers
+- Technical settings tucked into advanced menus
+- Raw JSON hidden by default
+- No official Fortnite logo or official UI assets added
+
+Functionality remains:
+
+- API-only
+- No images from listings
+- No page scraping
+- Watch mode
+- Sound alert
+- Rare stack pricing
