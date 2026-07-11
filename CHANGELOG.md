@@ -1,12 +1,11 @@
+## v1.10.0
+
+- Rolled back the v1.9.0 themed redesign
+- Restored the older clean dark/lobby aesthetic
+- Kept rare stack pricing, watch mode, skin search, and price baseline features
+- Removed the full background image lobby theme
+
 # Changelog
-
-## v1.9.0
-
-- Redesigned the website into a Fortnite-lobby-inspired layout
-- Added local lobby background from supplied reference image
-- Added top navigation bar, left search panel, center stage, and right play panel
-- Removed more visible technical clutter from the main screen
-- Kept API-only scanner, watch mode, and rare stack pricing
 
 ## v1.8.0
 

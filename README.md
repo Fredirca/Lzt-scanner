@@ -1,4 +1,4 @@
-# Wrota Release v1.9.0
+# Wrota Release v1.10.0
 
 Dark-mode, API-only release build.
 
@@ -217,28 +217,24 @@ Modes:
 This remains read-only and only uses API listing data.
 
 
-## v1.9.0 Fortnite-lobby-inspired website theme
+## v1.10.0 old aesthetic restore
 
-This release redesigns the website to match the lobby references supplied by the user.
+This restores the previous clean dark/lobby aesthetic and removes the full Fortnite-lobby themed redesign.
 
-Design changes:
+Kept:
 
-- Full-screen lobby scene background from the supplied reference image
-- Top navigation bar inspired by older game lobby menus
-- Left-side search / daily scan panel
-- Center stage with scan-ready character-platform style block
-- Right-side play/watch panel
-- Bottom result board with compact listing cards
-- Saved listings and debug log moved into drawers
-- Technical settings tucked into advanced menus
-- Raw JSON hidden by default
-- No official Fortnite logo or official UI assets added
-
-Functionality remains:
-
-- API-only
-- No images from listings
-- No page scraping
-- Watch mode
-- Sound alert
 - Rare stack pricing
+- Watch mode
+- Sound alerts
+- Price baseline/deal detection
+- Skin search
+- API key help
+- API-only logic
+- No images
+- No page scraping
+
+Removed from this restored build:
+
+- Full background lobby image theme
+- Top game-menu redesign
+- Big Fortnite-style stage layout
