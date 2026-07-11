@@ -1,3 +1,19 @@
+## v2.1.0
+
+- Removed regular price baseline system
+- Removed rare stack valuation UI
+- Removed deals filter and deal sorting
+- Removed price check blocks from result cards
+- Kept actual listing price, scan, watch, and skin search
+
+## v2.0.0
+
+- Reset UI to ultra clean layout
+- Removed themed/lobby clutter
+- Kept rare stack pricing and watch mode
+- Hid advanced settings and technical panels
+- Trimmed result cards to the important info
+
 ## v1.10.0
 
 - Rolled back the v1.9.0 themed redesign

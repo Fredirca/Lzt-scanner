@@ -346,195 +346,41 @@ async function pool(tasks,limit,onDone){
   await Promise.all(Array.from({length:Math.max(1,Math.min(limit,tasks.length))},worker));
 }
 
-function priceNumber(r){return num(r?.price);}
-function median(values){
-  const xs=values.filter(v=>Number.isFinite(v)).sort((a,b)=>a-b);
-  if(!xs.length)return null;
-  const mid=Math.floor(xs.length/2);
-  return xs.length%2?xs[mid]:(xs[mid-1]+xs[mid])/2;
-}
-function avg(values){
-  const xs=values.filter(v=>Number.isFinite(v));
-  if(!xs.length)return null;
-  return xs.reduce((a,b)=>a+b,0)/xs.length;
-}
-function percentile(values,p){
-  const xs=values.filter(v=>Number.isFinite(v)).sort((a,b)=>a-b);
-  if(!xs.length)return null;
-  const idx=(xs.length-1)*p;
-  const lo=Math.floor(idx), hi=Math.ceil(idx);
-  if(lo===hi)return xs[lo];
-  return xs[lo]+(xs[hi]-xs[lo])*(idx-lo);
-}
-function minBaselineSamples(){
-  return Math.max(2,Math.min(50,Number($("baselineMinSamples")?.value)||3));
-}
-function discountThreshold(){
-  return Math.max(1,Math.min(90,Number($("discountThreshold")?.value)||25));
-}
-function priceCheckEnabled(){
-  return $("priceCheck")?.checked!==false;
-}
-function priceFmt(n){
-  return Number.isFinite(n)?`$${n.toFixed(2)}`:"Unknown";
-}
 
-function rareStackMode(){
-  return $("rareStackMode")?.value||"stacked";
-}
-function listingRareLabels(r){
-  const labels=(r.labels||[]).filter(x=>x&&String(x).trim());
-  return [...new Set(labels)];
-}
-function rareUnitBaselines(){
-  const map=baselineMap();
-  const minN=minBaselineSamples();
-  return [...map.values()].filter(b=>b.n>=minN&&Number.isFinite(b.median)&&b.median>0);
-}
-function rareStackBaselineFor(r){
-  if(!priceCheckEnabled())return null;
-  const p=priceNumber(r);
-  if(!Number.isFinite(p)||p<=0)return null;
 
-  const labels=listingRareLabels(r);
-  if(!labels.length)return null;
 
-  const map=baselineMap();
-  const minN=minBaselineSamples();
-  const parts=[];
 
-  for(const label of labels){
-    const b=map.get(label);
-    if(!b||b.n<minN||!Number.isFinite(b.median)||b.median<=0)continue;
-    parts.push({...b});
-  }
 
-  if(!parts.length)return null;
 
-  // Best single rare = previous simple behavior.
-  if(rareStackMode()==="best"){
-    const best=parts
-      .map(b=>({...b,price:p,gap:b.median-p,gapPct:((b.median-p)/b.median)*100,parts:[b]}))
-      .sort((a,b)=>b.gapPct-a.gapPct)[0];
-    return best||null;
-  }
 
-  // Stacked value = account has multiple rare hits, so compare against a combined baseline.
-  // To avoid double-counting the shared base account value too aggressively, the biggest
-  // rare median counts fully, then extra rare medians count with a diminishing stack weight.
-  const sorted=parts.slice().sort((a,b)=>b.median-a.median);
-  let stacked=0;
-  sorted.forEach((b,i)=>{
-    const weight=i===0?1:Math.max(0.35,0.72-(i-1)*0.10);
-    stacked+=b.median*weight;
-  });
 
-  const gap=stacked-p;
-  const gapPct=(gap/stacked)*100;
 
-  return {
-    label:`${parts.length} rare match${parts.length===1?"":"es"}`,
-    n:Math.min(...parts.map(x=>x.n)),
-    median:stacked,
-    average:null,
-    p25:null,
-    p75:null,
-    price:p,
-    gap,
-    gapPct,
-    parts:sorted
-  };
-}
-function rareStackText(r){
-  const b=rareStackBaselineFor(r);
-  if(!b)return "Needs more samples";
-  const partText=(b.parts||[]).map(x=>x.label).slice(0,4).join(" + ");
-  const more=(b.parts||[]).length>4?` + ${(b.parts||[]).length-4} more`:"";
-  return `${priceFmt(b.median)} stack baseline · ${Math.abs(b.gapPct).toFixed(0)}% ${b.gapPct>=0?"below":"above"} · ${partText}${more}`;
-}
-function rareStackValue(r){
-  const b=rareStackBaselineFor(r);
-  return b&&Number.isFinite(b.median)?b.median:0;
-}
 
-function baselineMap(){
-  const groups=new Map();
-  for(const r of results){
-    const p=priceNumber(r);
-    if(!Number.isFinite(p)||p<=0)continue;
-    const labels=(r.labels&&r.labels.length)?r.labels:["All listings"];
-    for(const label of labels){
-      if(!groups.has(label))groups.set(label,[]);
-      groups.get(label).push(p);
-    }
-  }
-  const map=new Map();
-  for(const [label,prices] of groups.entries()){
-    const med=median(prices);
-    if(!Number.isFinite(med))continue;
-    map.set(label,{
-      label,
-      n:prices.length,
-      median:med,
-      average:avg(prices),
-      p25:percentile(prices,.25),
-      p75:percentile(prices,.75)
-    });
-  }
-  return map;
-}
-function priceBaselineFor(r){
-  return rareStackBaselineFor(r);
-}
-function isBelowRegular(r){
-  const b=priceBaselineFor(r);
-  return !!(b&&b.gapPct>=discountThreshold());
-}
-function priceCheckText(r){
-  return rareStackText(r);
-}
-function priceCheckBlock(r){
-  if(!priceCheckEnabled())return "";
-  const b=rareStackBaselineFor(r);
-  if(!b){
-    return `<div class="price-check neutral"><b>Rare stack value</b><span>Needs more scanned samples for this rare combination.</span></div>`;
-  }
-  const below=b.gapPct>=discountThreshold();
-  const cls=below?"good":(b.gapPct>=0?"neutral":"high");
-  const title=below?"Below stacked rare value":"Rare stack value";
-  const pieces=(b.parts||[]).map(x=>`${x.label}: ${priceFmt(x.median)}`).join(" · ");
-  return `<div class="price-check ${cls}">
-    <b>${esc(title)}</b>
-    <span>${esc(priceFmt(b.price))} vs ${esc(priceFmt(b.median))} stack baseline · ${esc(Math.abs(b.gapPct).toFixed(0))}% ${b.gapPct>=0?"below":"above"} · ${esc(b.parts?.length||1)} rare match${(b.parts?.length||1)===1?"":"es"}</span>
-    ${pieces?`<small>${esc(pieces)}</small>`:""}
-  </div>`;
-}
-function renderBaselinePanel(){
-  const panel=$("baselinePanel");
-  if(!panel)return;
-  if(!priceCheckEnabled()||!results.length){
-    panel.classList.add("hidden");
-    panel.innerHTML="";
-    return;
-  }
-  const minN=minBaselineSamples();
-  const baselines=[...baselineMap().values()]
-    .filter(b=>b.n>=minN)
-    .sort((a,b)=>b.n-a.n||a.median-b.median)
-    .slice(0,10);
-  if(!baselines.length){
-    panel.classList.remove("hidden");
-    panel.innerHTML=`<div class="baseline-empty">Rare stack pricing needs at least ${minN} price samples per matched group.</div>`;
-    return;
-  }
-  panel.classList.remove("hidden");
-  panel.innerHTML=`<div class="baseline-head"><b>Rare price baselines</b><span>median per rare match from scanned results</span></div>
-    <div class="baseline-list">${baselines.map(b=>`<div><span>${esc(b.label)}</span><b>${esc(priceFmt(b.median))}</b><small>${esc(b.n)} samples · avg ${esc(priceFmt(b.average))}</small></div>`).join("")}</div>`;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+function priceCheckEnabled(){return false;}
+function priceBaselineFor(r){return null;}
+function rareStackBaselineFor(r){return null;}
+function rareStackValue(r){return 0;}
+function priceCheckText(r){return "Off";}
+function priceCheckBlock(r){return "";}
+function renderBaselinePanel(){const p=$("baselinePanel");if(p){p.classList.add("hidden");p.innerHTML="";}}
+function isBelowRegular(r){return false;}
 
 function filter(){
-  const q=$("q").value.toLowerCase().trim(), min=num($("minPrice").value), max=num($("maxPrice").value), multi=$("multiOnly").checked, below=$("belowBaselineOnly")?.checked||false;
-  return results.filter(r=>{const txt=[r.title,r.seller,r.country,r.apiText,...r.labels].join(" ").toLowerCase();const p=num(r.price);if(q&&!txt.includes(q))return false;if(min!==null&&(p===null||p<min))return false;if(max!==null&&(p===null||p>max))return false;if(multi&&r.labels.length<2)return false;if(below&&!isBelowRegular(r))return false;return true});
+  const q=$("q").value.toLowerCase().trim(), min=num($("minPrice").value), max=num($("maxPrice").value), multi=$("multiOnly").checked;
+  return results.filter(r=>{const txt=[r.title,r.seller,r.country,r.apiText,...r.labels].join(" ").toLowerCase();const p=num(r.price);if(q&&!txt.includes(q))return false;if(min!==null&&(p===null||p<min))return false;if(max!==null&&(p===null||p>max))return false;if(multi&&r.labels.length<2)return false;return true});
 }
 function sortList(list){
   const s=$("sort").value, ord=$("order").value, arr=list.slice();
@@ -544,8 +390,6 @@ function sortList(list){
   else if(s==="price_desc")arr.sort((a,b)=>(num(b.price)??-Infinity)-(num(a.price)??-Infinity));
   else if(s==="matches_desc")arr.sort((a,b)=>b.labels.length-a.labels.length);
   else if(s==="skins_desc")arr.sort((a,b)=>(num(b.skins)??-Infinity)-(num(a.skins)??-Infinity));
-  else if(s==="price_gap_desc")arr.sort((a,b)=>(priceBaselineFor(b)?.gapPct??-Infinity)-(priceBaselineFor(a)?.gapPct??-Infinity));
-  else if(s==="rare_stack_desc")arr.sort((a,b)=>rareStackValue(b)-rareStackValue(a));
   else if(ord==="pdate_to_up_upload"||ord==="pdate_to_up")arr.sort((a,b)=>uploadMs(a)-uploadMs(b)||a.rank-b.rank);
   else arr.sort(newest);
   return arr;
@@ -559,7 +403,7 @@ Email Changeable: ${bool(r.email)}
 
 Title: ${r.title}
 Seller: ${r.seller}
-Price: ${price(r.price)}\nRegular Price: ${priceBaselineFor(r)?priceFmt(priceBaselineFor(r).median):"Unknown"}\nPrice Check: ${priceCheckText(r)}
+Price: ${price(r.price)}
 Level: ${r.level}
 Country: ${r.country}
 Upload Date: ${dateText(uploadOf(r))}
@@ -576,9 +420,8 @@ function card(r){
       <div><span>Skins</span><b>${esc(r.skins)}</b></div>
       <div><span>Email</span><b>${esc(bool(r.email))}</b></div>
       <div><span>Age</span><b>${esc(age(r))}</b></div>
-      <div><span>Rare stack</span><b>${r.labels.length}x</b></div>
+      <div><span>Matches</span><b>${r.labels.length}</b></div>
     </div>
-    ${priceCheckBlock(r)}
     <div class="actions"><a href="https://lzt.market/${esc(r.id)}/" target="_blank">Open</a><button data-copy="${esc(msg)}">Copy</button><button data-save="${esc(r.id)}">Save</button></div>
     ${$("includeRaw")?.checked?`<details class="raw"><summary>API JSON</summary><pre>${esc(JSON.stringify(r.raw,null,2))}</pre></details>`:""}
   </article>`;
@@ -751,9 +594,9 @@ function bind(){
   $("addTargetBtn").onclick=()=>{parseTargets($("targetInput").value).forEach(t=>addTarget(targets,t.param,t.id));$("targetInput").value="";renderTargets()};
   $("parseBulkBtn").onclick=()=>{parseTargets($("bulkTargets").value).forEach(t=>addTarget(targets,t.param,t.id));$("bulkTargets").value="";renderTargets()};
   $("ogBtn").onclick=()=>{targets=[...DEFAULT_TARGETS];renderTargets()};$("clearTargetsBtn").onclick=()=>{targets=[];renderTargets()};
-  ["q","minPrice","maxPrice","sort","multiOnly","includeRaw","belowBaselineOnly","priceCheck","discountThreshold","baselineMinSamples"].forEach(id=>{const el=$(id);if(el)el.addEventListener("input",renderFeed)});
-  ["sort","multiOnly","includeRaw","belowBaselineOnly","priceCheck","discountThreshold","baselineMinSamples"].forEach(id=>{const el=$(id);if(el)el.addEventListener("change",renderFeed)});
-  $("resetFiltersBtn").onclick=()=>{$("q").value="";$("minPrice").value="";$("maxPrice").value="";$("sort").value="api";$("multiOnly").checked=false;if($("belowBaselineOnly"))$("belowBaselineOnly").checked=false;renderFeed()};
+  ["q","minPrice","maxPrice","sort","multiOnly","includeRaw"].forEach(id=>{const el=$(id);if(el)el.addEventListener("input",renderFeed)});
+  ["sort","multiOnly","includeRaw"].forEach(id=>{const el=$(id);if(el)el.addEventListener("change",renderFeed)});
+  $("resetFiltersBtn").onclick=()=>{$("q").value="";$("minPrice").value="";$("maxPrice").value="";$("sort").value="api";$("multiOnly").checked=false;renderFeed()};
   $("compactBtn").onclick=()=>{compact=!compact;$("compactBtn").textContent=compact?"CARDS":"COMPACT";renderFeed()};
   $("copyBtn").onclick=async()=>{try{await navigator.clipboard.writeText(visible().map(message).join("\n\n---\n\n"));log("copied visible")}catch{log("copy failed")}};
   $("exportBtn").onclick=()=>exportJson("wrota-api-listings.json",visible());

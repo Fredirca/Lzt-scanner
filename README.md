@@ -1,4 +1,4 @@
-# Wrota Release v1.10.0
+# Wrota Release v2.1.0
 
 Dark-mode, API-only release build.
 
@@ -238,3 +238,52 @@ Removed from this restored build:
 - Full background lobby image theme
 - Top game-menu redesign
 - Big Fortnite-style stage layout
+
+
+## v2.0.0 ultra clean reset
+
+This release goes back to a very clean layout:
+
+- No themed background
+- No lobby/menu gimmicks
+- One search box
+- One scan/watch action row
+- One results section
+- Stats reduced
+- Advanced settings hidden
+- Saved listings and debug hidden in drawers
+- Result cards trimmed to key info
+
+Kept:
+
+- API-only scanner
+- Skin search
+- Watch mode + browser sound
+- Price baseline
+- Rare stack pricing
+- Export/copy/save
+
+
+## v2.1.0 no price baseline
+
+Removed the regular price / rare stack valuation system.
+
+Kept:
+
+- Actual listing price
+- Skin search
+- Scan
+- Watch mode
+- Sound alerts
+- API key help
+- Export/copy/save
+- API-only logic
+
+Removed:
+
+- Regular price baseline panel
+- Rare stack valuation
+- Deals filter
+- Biggest deal sort
+- Most rare value sort
+- Price check block on cards
