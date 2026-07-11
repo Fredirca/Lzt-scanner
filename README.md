@@ -1,4 +1,4 @@
-# Wrota Release v2.1.0
+# Wrota Release v2.2.0
 
 Dark-mode, API-only release build.
 
@@ -264,26 +264,30 @@ Kept:
 - Export/copy/save
 
 
-## v2.1.0 no price baseline
+## v2.2.0 search and exclusives restored
 
-Removed the regular price / rare stack valuation system.
+This release restores the useful search features while keeping the price baseline removed.
 
-Kept:
+Restored / kept:
 
-- Actual listing price
-- Skin search
-- Scan
-- Watch mode
-- Sound alerts
+- Real skin search bar
+- Live known-skin suggestions
+- Unknown skin names become API title searches
+- Exclusive filters dropdown
+- OG exclusives preset
+- Promo/device exclusives preset
+- All exclusives preset
+- Watch mode + sound
 - API key help
 - Export/copy/save
-- API-only logic
 
-Removed:
+Still removed:
 
-- Regular price baseline panel
+- Regular price baseline
 - Rare stack valuation
 - Deals filter
-- Biggest deal sort
-- Most rare value sort
-- Price check block on cards
+- Price check blocks
+
+## v2.2.0 search and exclusives restored
+
+Restores the real skin search bar and exclusive filters while keeping price baseline removed.

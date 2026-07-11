@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Wrota — Ultra Clean v2.1.0</title>
-  <meta name="description" content="Clean API-only listing scanner.">
-  <link rel="stylesheet" href="styles.css?v=2.1.0">
+  <title>Wrota — Clean v2.2.0</title>
+  <meta name="description" content="Clean API-only listing scanner with skin search and exclusive filters.">
+  <link rel="stylesheet" href="styles.css?v=2.2.0">
 </head>
 <body>
   <main class="app">
@@ -22,6 +22,99 @@
 
     <section class="card auth-card">
       <input id="proxyUrl" type="hidden">
+
+      <label>
+        <span>API key</span>
+        <input id="apiKey" type="password" autocomplete="current-password" placeholder="Paste LZT API token">
+      </label>
+
+      <div class="auth-actions">
+        <button id="showBtn">Show</button>
+        <button id="testBtn">Test</button>
+        <button id="saveBtn">Save</button>
+        <button id="clearBtn" class="danger">Clear</button>
+      </div>
+
+      <details class="quiet">
+        <summary>How to get an API key</summary>
+        <ol>
+          <li>Log in to LZT Market.</li>
+          <li>Open account settings.</li>
+          <li>Find API/token settings.</li>
+          <li>Copy the token, paste it above, then press Test.</li>
+        </ol>
+        <p>Keep your token private. Do not commit it to GitHub or share screenshots of it.</p>
+        <a href="https://lzt-market.readme.io/reference" target="_blank" rel="noopener">Open API docs</a>
+      </details>
+    </section>
+
+    <section class="card hero">
+      <label class="main-search">
+        <span>Search for any skin</span>
+        <div class="search-line">
+          <input id="skinSearchInput" placeholder="Galaxy, Wildcat, Renegade Raider, Travis Scott...">
+          <button id="skinSearchApplyBtn">Add</button>
+        </div>
+      </label>
+
+      <div id="skinSearchResults" class="skin-results"></div>
+
+      <div class="clean-row">
+        <label>
+          <span>Exclusive filters</span>
+          <select id="exclusiveMode">
+            <option value="off">Off</option>
+            <option value="og">OG exclusives</option>
+            <option value="promo">Promo / device exclusives</option>
+            <option value="all">All exclusives</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Sort from API</span>
+          <select id="order">
+            <option value="pdate_to_down_upload">Newest uploaded</option>
+            <option value="pdate_to_up_upload">Oldest uploaded</option>
+            <option value="price_to_up">Cheapest first</option>
+            <option value="price_to_down">Highest price</option>
+            <option value="pdate_to_down">Newest listed</option>
+            <option value="pdate_to_up">Oldest listed</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Pages</span>
+          <input id="pages" type="number" min="1" max="50" value="5">
+        </label>
+      </div>
+
+      <details class="quiet active-searches" open>
+        <summary>Active skin searches <b id="skinQueryCount">0</b></summary>
+        <div id="skinQueryList" class="targets"></div>
+      </details>
+
+      <div class="main-actions">
+        <button id="scanBtn" class="primary">Scan</button>
+        <button id="watchBtn">Watch</button>
+        <button id="stopWatchBtn" class="danger" disabled>Stop</button>
+      </div>
+
+      <details class="quiet">
+        <summary>Advanced tools</summary>
+
+        <div class="advanced-grid">
+          <label>
+            <span>Watch every seconds</span>
+            <input id="watchInterval" type="number" min="30" max="3600" value="90">
+          </label>
+          <label>
+            <span>Threads</span>
+            <input id="threads" type="number" min="1" max="8" value="3">
+          </label>
+          <label>
+            <span>Delay ms</span>
+            <input id="delay" type="number" min="0" max="15000" value="250">
+          </label>
         </div>
 
         <div class="checks">
@@ -53,11 +146,6 @@
             <button id="clearTargetsBtn" class="danger">Clear targets</button>
           </div>
         </div>
-      </details>
-
-      <details class="quiet active-searches" open>
-        <summary>Active skin searches <b id="skinQueryCount">0</b></summary>
-        <div id="skinQueryList" class="targets"></div>
       </details>
     </section>
 
@@ -102,7 +190,7 @@
 
       <div id="feed" class="empty">
         <h3>No results yet</h3>
-        <p>Add a skin or preset, then scan.</p>
+        <p>Search for a skin, pick exclusive filters, then scan.</p>
       </div>
     </section>
 
@@ -125,9 +213,9 @@
       </details>
     </section>
 
-    <footer>Wrota v2.1.0 · API-only · no images · no scraping</footer>
+    <footer>Wrota v2.2.0 · skin search · exclusive filters · API-only · no price baseline</footer>
   </main>
 
-  <script src="app.js?v=2.1.0"></script>
+  <script src="app.js?v=2.2.0"></script>
 </body>
 </html>

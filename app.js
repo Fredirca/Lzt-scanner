@@ -369,63 +369,7 @@ async function pool(tasks,limit,onDone){
 
 
 
-function priceCheckEnabled(){return false;}
-function priceBaselineFor(r){return null;}
-function rareStackBaselineFor(r){return null;}
-function rareStackValue(r){return 0;}
-function priceCheckText(r){return "Off";}
-function priceCheckBlock(r){return "";}
-function renderBaselinePanel(){const p=$("baselinePanel");if(p){p.classList.add("hidden");p.innerHTML="";}}
-function isBelowRegular(r){return false;}
 
-function filter(){
-  const q=$("q").value.toLowerCase().trim(), min=num($("minPrice").value), max=num($("maxPrice").value), multi=$("multiOnly").checked;
-  return results.filter(r=>{const txt=[r.title,r.seller,r.country,r.apiText,...r.labels].join(" ").toLowerCase();const p=num(r.price);if(q&&!txt.includes(q))return false;if(min!==null&&(p===null||p<min))return false;if(max!==null&&(p===null||p>max))return false;if(multi&&r.labels.length<2)return false;return true});
-}
-function sortList(list){
-  const s=$("sort").value, ord=$("order").value, arr=list.slice();
-  const has=x=>uploadMs(x)!==-Infinity;
-  const newest=(a,b)=>has(a)!==has(b)?(has(a)?-1:1):Math.abs(Date.now()-uploadMs(a))-Math.abs(Date.now()-uploadMs(b))||uploadMs(b)-uploadMs(a)||a.rank-b.rank;
-  if(s==="price_asc")arr.sort((a,b)=>(num(a.price)??Infinity)-(num(b.price)??Infinity));
-  else if(s==="price_desc")arr.sort((a,b)=>(num(b.price)??-Infinity)-(num(a.price)??-Infinity));
-  else if(s==="matches_desc")arr.sort((a,b)=>b.labels.length-a.labels.length);
-  else if(s==="skins_desc")arr.sort((a,b)=>(num(b.skins)??-Infinity)-(num(a.skins)??-Infinity));
-  else if(ord==="pdate_to_up_upload"||ord==="pdate_to_up")arr.sort((a,b)=>uploadMs(a)-uploadMs(b)||a.rank-b.rank);
-  else arr.sort(newest);
-  return arr;
-}
-function visible(){return sortList(filter())}
-function message(r){return`New Fortnite listing on LZT Market
-
-Skin Count: ${r.skins}
-Matches: ${r.labels.join(", ")}
-Email Changeable: ${bool(r.email)}
-
-Title: ${r.title}
-Seller: ${r.seller}
-Price: ${price(r.price)}
-Level: ${r.level}
-Country: ${r.country}
-Upload Date: ${dateText(uploadOf(r))}
-Age: ${age(r)}
-Link: https://lzt.market/${r.id}/`}
-function card(r){
-  const msg=message(r);
-  return `<article class="card">
-    <div class="cardhead">
-      <div><div class="cmd">Listing #${esc(r.id)}</div><h3>${esc(r.title)}</h3><div class="badges">${r.labels.map(x=>`<span>${esc(x)}</span>`).join("")}</div></div>
-      <div class="price">${esc(price(r.price))}</div>
-    </div>
-    <div class="info">
-      <div><span>Skins</span><b>${esc(r.skins)}</b></div>
-      <div><span>Email</span><b>${esc(bool(r.email))}</b></div>
-      <div><span>Age</span><b>${esc(age(r))}</b></div>
-      <div><span>Matches</span><b>${r.labels.length}</b></div>
-    </div>
-    <div class="actions"><a href="https://lzt.market/${esc(r.id)}/" target="_blank">Open</a><button data-copy="${esc(msg)}">Copy</button><button data-save="${esc(r.id)}">Save</button></div>
-    ${$("includeRaw")?.checked?`<details class="raw"><summary>API JSON</summary><pre>${esc(JSON.stringify(r.raw,null,2))}</pre></details>`:""}
-  </article>`;
-}
 function renderStats(){const v=visible();$("statShown").textContent=v.length;$("statUnique").textContent=results.length;$("statHits").textContent=results.reduce((a,r)=>a+r.labels.length,0);$("statReq").textContent=reqCount;$("statSaved").textContent=saved.length}
 function renderFeed(){renderStats();renderBaselinePanel();const v=visible();const box=$("feed");if(!v.length){box.className="empty";box.innerHTML="<h3>No results</h3><p>Try relaxing filters or run another scan.</p>";return}box.className=compact?"cards compact":"cards";box.innerHTML=v.map(card).join("");wire(box)}
 function renderSaved(){const box=$("saved");$("statSaved").textContent=saved.length;if(!saved.length){box.className="empty small-empty";box.innerHTML="<h3>No saved listings</h3>";return}box.className="cards compact";box.innerHTML=saved.map(card).join("");wire(box)}

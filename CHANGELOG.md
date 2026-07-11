@@ -1,10 +1,15 @@
-## v2.1.0
+## v2.2.0
 
-- Removed regular price baseline system
-- Removed rare stack valuation UI
-- Removed deals filter and deal sorting
-- Removed price check blocks from result cards
-- Kept actual listing price, scan, watch, and skin search
+- Restored visible skin search bar
+- Restored exclusive filters dropdown
+- Kept price baseline removed
+
+## v2.2.0
+
+- Restored visible skin search bar
+- Restored exclusive filters dropdown
+- Kept watch mode and API-only scanning
+- Kept price baseline removed
 
 ## v2.0.0
 
