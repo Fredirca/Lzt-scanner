@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.4.0
+
+- Added in-app API key help panel
+- Added token safety warning
+- Added link to public LZT Market API docs
+- Clarified API key placeholder text
+
+## v1.3.0
+
+- Reworked UI into a cleaner step-based flow
+- Moved skin search to the main target area
+- Hid advanced target tools behind details
+- Hid advanced scan controls behind details
+- Reduced visual noise across cards and empty states
+
+## v1.2.0
+
+- Added real skin search bar
+- Added live known-skin suggestions
+- Added exact skin ID support
+- Added API title-search fallback for unknown skin names
+- Added applied skin search chips
+
 ## v1.1.0
 
 - Added exclusive skin search setting

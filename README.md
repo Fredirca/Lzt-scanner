@@ -1,4 +1,4 @@
-# Wrota Release v1.1.0
+# Wrota Release v1.4.0
 
 Dark-mode, API-only release build.
 
@@ -62,7 +62,7 @@ It does not proxy image URLs or web pages.
 
 ## Exclusive skin search
 
-Release v1.1.0 adds an exclusive skin search setting.
+Release v1.4.0 adds an exclusive skin search setting.
 
 Modes:
 
@@ -93,3 +93,50 @@ Included preset IDs:
 386_athena_commando_m_streetopsstealth
 757_athena_commando_f_wildcat
 ```
+
+
+## Skin search bar
+
+Release v1.4.0 adds a real skin search panel.
+
+It supports:
+
+- Searching known preset skins by readable name
+- Adding exact `skin[]` filters from known matches
+- Pasting exact Fortnite cosmetic IDs
+- Pressing Enter on any unknown skin name to add it as an API title search
+- Keeping applied title searches separate from manual cosmetic targets
+
+Exact IDs are preferred when known. Unknown names use `title=<name>` as an API listing search so the scan can still search for any skin name you type.
+
+
+## v1.4.0 clean UI
+
+This release focuses on usability:
+
+- Cleaner dark layout
+- Step-based flow
+- Skin search moved to the top
+- Advanced target tools tucked behind a details panel
+- Advanced scan settings tucked behind a details panel
+- Less visual noise
+- Better empty states
+- Same API-only scanner logic
+
+
+## v1.4.0 API key help
+
+This release adds an in-app guide for getting and using an API key.
+
+The guide explains:
+
+- Log in to LZT / Lolzteam Market
+- Open account settings
+- Find API / token / developer / personal access token settings
+- Create or copy a token
+- Paste it into Wrota
+- Press Test
+- Save only on a trusted browser
+- Keep the token private
+
+The UI links to the public LZT Market API reference.

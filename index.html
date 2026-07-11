@@ -3,79 +3,131 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Wrota — Release v1.1.0</title>
-  <meta name="description" content="API-only listing review console.">
-  <link rel="stylesheet" href="styles.css?v=1.1.0">
+  <title>Wrota — Release v1.4.0</title>
+  <meta name="description" content="Clean API-only listing review console.">
+  <link rel="stylesheet" href="styles.css?v=1.4.0">
 </head>
 <body>
   <main class="app">
-    <header class="top">
+    <header class="topbar">
       <div class="brand">
-        <div class="mark">W</div>
+        <div class="logo">W</div>
         <div>
           <h1>Wrota</h1>
-          <p>API-only listing review console</p>
+          <p>API-only listing scanner</p>
         </div>
       </div>
 
-      <div class="release">
-        <span id="status">READY</span>
-        <small>Release v1.1.0</small>
-        <button id="scanBtn" class="primary">Scan</button>
+      <div class="top-actions">
+        <span id="status" class="status">READY</span>
+        <button id="scanBtn" class="primary">Run scan</button>
       </div>
     </header>
 
-    <section class="auth card">
-      <input id="proxyUrl" type="hidden">
-      <label class="grow">
-        <span>API key</span>
-        <input id="apiKey" type="password" autocomplete="current-password" placeholder="Paste token">
-      </label>
-      <button id="showBtn" class="button">Show</button>
-      <button id="testBtn" class="button">Test</button>
-      <button id="saveBtn" class="button">Save</button>
-      <button id="clearBtn" class="button danger">Clear</button>
+    <section class="setup-card">
+      <div class="setup-main">
+        <input id="proxyUrl" type="hidden">
+        <label class="key-field">
+          <span>API key</span>
+          <input id="apiKey" type="password" autocomplete="current-password" placeholder="Paste your LZT API token">
+        </label>
+      </div>
+
+      <div class="setup-actions">
+        <button id="showBtn" class="button">Show</button>
+        <button id="testBtn" class="button">Test</button>
+        <button id="saveBtn" class="button">Save</button>
+        <button id="clearBtn" class="button danger">Clear</button>
+      </div>
+
+      <details class="api-help">
+        <summary>How do I get an API key?</summary>
+        <div class="api-help-body">
+          <ol>
+            <li>Log in to your LZT / Lolzteam Market account.</li>
+            <li>Open your account settings and look for an API, token, developer, or personal access token page.</li>
+            <li>Create or copy your API token.</li>
+            <li>Paste the token into the API key field above.</li>
+            <li>Press <b>Test</b>. If the status returns ready, press <b>Save</b> so this browser remembers it.</li>
+          </ol>
+          <div class="help-warning">
+            Keep the token private. Do not post screenshots of it, do not commit it to GitHub, and remove it with Clear when using a shared computer.
+          </div>
+          <a href="https://lzt-market.readme.io/reference" target="_blank" rel="noopener">Open LZT Market API docs</a>
+        </div>
+      </details>
+
     </section>
 
-    <section class="workspace">
-      <aside class="card targets-card">
-        <div class="section-title">
+    <section class="steps">
+      <article class="panel step-panel">
+        <div class="panel-head">
           <div>
-            <span>01</span>
-            <h2>Targets</h2>
+            <span class="step">Step 1</span>
+            <h2>Choose what to search</h2>
           </div>
-          <button id="ogBtn" class="button small">Load defaults</button>
+          <button id="ogBtn" class="button small">Load OG defaults</button>
         </div>
 
-        <div class="target-input">
-          <input id="targetInput" placeholder="Paste filter, URL, or cosmetic ID">
-          <button id="addTargetBtn" class="button">Add</button>
+        <div class="skin-search">
+          <label>
+            <span>Search for a skin</span>
+            <div class="search-row">
+              <input id="skinSearchInput" placeholder="Galaxy, Wildcat, Renegade Raider, Travis Scott...">
+              <button id="skinSearchApplyBtn" class="button">Apply</button>
+            </div>
+          </label>
+          <div id="skinSearchResults" class="skin-results"></div>
         </div>
 
-        <details class="target-list-box" open>
-          <summary>Active targets <b id="targetCount">0</b></summary>
-          <div id="targetList" class="targets"></div>
+        <div class="quick-options">
+          <label>
+            <span>Exclusive preset</span>
+            <select id="exclusiveMode">
+              <option value="off">Off</option>
+              <option value="og">OG style exclusives</option>
+              <option value="promo">Promo / device exclusives</option>
+              <option value="all">All exclusive presets</option>
+            </select>
+          </label>
+        </div>
+
+        <details class="clean-details">
+          <summary>Manual target tools</summary>
+          <div class="target-input">
+            <input id="targetInput" placeholder="Paste filter, URL, or cosmetic ID">
+            <button id="addTargetBtn" class="button">Add</button>
+          </div>
+
+          <details class="target-box" open>
+            <summary>Manual targets <b id="targetCount">0</b></summary>
+            <div id="targetList" class="targets"></div>
+          </details>
+
+          <textarea id="bulkTargets" rows="4" placeholder="Bulk paste targets"></textarea>
+          <div class="row">
+            <button id="parseBulkBtn" class="button">Parse bulk</button>
+            <button id="clearTargetsBtn" class="button danger">Clear targets</button>
+          </div>
         </details>
 
-        <textarea id="bulkTargets" rows="5" placeholder="Bulk paste targets"></textarea>
+        <details class="target-box applied-searches" open>
+          <summary>Applied skin searches <b id="skinQueryCount">0</b></summary>
+          <div id="skinQueryList" class="targets"></div>
+        </details>
+      </article>
 
-        <div class="actions">
-          <button id="parseBulkBtn" class="button">Parse</button>
-          <button id="clearTargetsBtn" class="button danger">Clear targets</button>
-        </div>
-      </aside>
-
-      <section class="card">
-        <div class="section-title">
+      <article class="panel step-panel">
+        <div class="panel-head">
           <div>
-            <span>02</span>
+            <span class="step">Step 2</span>
             <h2>Scan settings</h2>
           </div>
         </div>
 
-        <div class="settings">
+        <div class="settings-grid">
           <label>
-            <span>Order</span>
+            <span>Sort from API</span>
             <select id="order">
               <option value="pdate_to_down_upload">Newest uploaded</option>
               <option value="pdate_to_up_upload">Oldest uploaded</option>
@@ -89,65 +141,57 @@
             <span>Pages</span>
             <input id="pages" type="number" min="1" max="50" value="5">
           </label>
-          <label>
-            <span>Threads</span>
-            <input id="threads" type="number" min="1" max="8" value="3">
-          </label>
-          <label>
-            <span>Delay ms</span>
-            <input id="delay" type="number" min="0" max="15000" value="250">
-          </label>
         </div>
 
-        <div class="checks">
-          <label><input id="apiDetails" type="checkbox" checked> API detail pass</label>
-          <label><input id="includeRaw" type="checkbox" checked> Raw JSON</label>
-        </div>
-
-        <div class="exclusive-panel">
-          <div>
-            <span>Exclusive skin search</span>
-            <p>Scan known exclusive skin filters without manually adding every target.</p>
+        <details class="clean-details">
+          <summary>Advanced scan settings</summary>
+          <div class="settings-grid advanced-grid">
+            <label>
+              <span>Threads</span>
+              <input id="threads" type="number" min="1" max="8" value="3">
+            </label>
+            <label>
+              <span>Delay ms</span>
+              <input id="delay" type="number" min="0" max="15000" value="250">
+            </label>
           </div>
-          <select id="exclusiveMode">
-            <option value="off">Off</option>
-            <option value="og">OG style exclusives</option>
-            <option value="promo">Promo / device exclusives</option>
-            <option value="all">All exclusive presets</option>
-          </select>
-        </div>
 
+          <div class="checks">
+            <label><input id="apiDetails" type="checkbox" checked> API detail pass</label>
+            <label><input id="includeRaw" type="checkbox" checked> Show raw JSON</label>
+          </div>
+        </details>
 
-        <p class="subtle">
-          Uses API JSON only. No images. No page scraping. Exclusive skin mode adds preset filters during scan. Requests send <code>order</code>, with <code>order_by</code> kept as compatibility fallback.
+        <p class="hint">
+          Simple mode is enough for most scans. Advanced settings are only there for throttling or debugging.
         </p>
-      </section>
+      </article>
     </section>
 
     <section class="stats">
       <div><span>Shown</span><b id="statShown">0</b></div>
       <div><span>Unique</span><b id="statUnique">0</b></div>
       <div><span>Hits</span><b id="statHits">0</b></div>
-      <div><span>API req</span><b id="statReq">0</b></div>
+      <div><span>API requests</span><b id="statReq">0</b></div>
       <div><span>Saved</span><b id="statSaved">0</b></div>
     </section>
 
-    <section class="card">
-      <div class="section-title inline-title">
+    <section class="panel results-panel">
+      <div class="panel-head results-head">
         <div>
-          <span>03</span>
+          <span class="step">Step 3</span>
           <h2>Results</h2>
         </div>
-        <div class="actions no-margin">
+        <div class="row no-margin">
           <button id="resetFiltersBtn" class="button small">Reset</button>
           <button id="compactBtn" class="button small">Compact</button>
           <button id="copyBtn" class="button small">Copy visible</button>
-          <button id="exportBtn" class="button small">Export JSON</button>
+          <button id="exportBtn" class="button small">Export</button>
         </div>
       </div>
 
       <div class="filters">
-        <input id="q" placeholder="Search listings">
+        <input id="q" placeholder="Search results">
         <input id="minPrice" type="number" min="0" placeholder="Min price">
         <input id="maxPrice" type="number" min="0" placeholder="Max price">
         <select id="sort">
@@ -167,44 +211,46 @@
       </div>
 
       <div id="feed" class="empty">
-        <h3>No results</h3>
-        <p>Add targets and run a scan.</p>
+        <h3>No results yet</h3>
+        <p>Add a skin search or preset, then run a scan.</p>
       </div>
     </section>
 
-    <section class="card saved-card">
-      <div class="section-title inline-title">
-        <div>
-          <span>04</span>
-          <h2>Saved</h2>
+    <section class="bottom-grid">
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <span class="step">Saved</span>
+            <h2>Saved listings</h2>
+          </div>
+          <div class="row no-margin">
+            <button id="exportSavedBtn" class="button small">Export</button>
+            <button id="clearSavedBtn" class="button small danger">Clear</button>
+          </div>
         </div>
-        <div class="actions no-margin">
-          <button id="exportSavedBtn" class="button small">Export saved</button>
-          <button id="clearSavedBtn" class="button small danger">Clear saved</button>
+        <div id="saved" class="empty small-empty">
+          <h3>No saved listings</h3>
         </div>
-      </div>
-      <div id="saved" class="empty small-empty">
-        <h3>No saved listings</h3>
-      </div>
-    </section>
+      </section>
 
-    <section class="card debug-card">
-      <div class="section-title inline-title">
-        <div>
-          <span>05</span>
-          <h2>Debug</h2>
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <span class="step">Debug</span>
+            <h2>Log</h2>
+          </div>
+          <button id="clearLogBtn" class="button small">Clear</button>
         </div>
-        <button id="clearLogBtn" class="button small">Clear</button>
-      </div>
-      <pre id="debugLog" class="log"></pre>
+        <pre id="debugLog" class="log"></pre>
+      </section>
     </section>
 
     <footer class="footer">
-      <span>Wrota Release v1.1.0</span>
+      <span>Wrota v1.4.0</span>
       <span>API-only · no images · no scraping</span>
     </footer>
   </main>
 
-  <script src="app.js?v=1.1.0"></script>
+  <script src="app.js?v=1.4.0"></script>
 </body>
 </html>

@@ -45,12 +45,20 @@ function exclusiveTargets(){
 function mergedScanTargets(){
   const merged=[];
   const push=t=>{
-    if(!t||!t.param||!t.id)return;
+    if(!t)return;
+    if(t.titleQuery){
+      const key=`title:${t.titleQuery.toLowerCase()}`;
+      if(merged.some(x=>(x.titleQuery&&`title:${x.titleQuery.toLowerCase()}`)===key))return;
+      merged.push({...t});
+      return;
+    }
+    if(!t.param||!t.id)return;
     if(merged.some(x=>x.param===t.param&&x.id===t.id))return;
     merged.push({...t});
   };
   targets.forEach(push);
   exclusiveTargets().forEach(push);
+  titleSearchTargets().forEach(push);
   return merged;
 }
 
@@ -99,6 +107,108 @@ async function api(path,params={}){
     try{return JSON.parse(text)}catch{return {raw:text}}
   }
   throw last||new Error("API failed");
+}
+
+
+const SKIN_SEARCH_CATALOG=[
+  ...EXCLUSIVE_SKIN_PRESETS.og,
+  ...EXCLUSIVE_SKIN_PRESETS.promo,
+  {param:"skin[]",id:"cid_028_athena_commando_f_og",label:"Renegade Raider"},
+  {param:"skin[]",id:"cid_017_athena_commando_m_og",label:"Aerial Assault Trooper"},
+  {param:"skin[]",id:"cid_030_athena_commando_m_halloween",label:"Skull Trooper"},
+  {param:"skin[]",id:"cid_029_athena_commando_f_halloween",label:"Ghoul Trooper"}
+];
+
+let skinNameQueries=[];
+
+function cleanSkinSearchText(v){
+  return String(v||"").trim().replace(/\s+/g," ");
+}
+function looksLikeSkinId(v){
+  const s=String(v||"").trim().toLowerCase();
+  return s.includes("athena_commando") || s.startsWith("cid_") || /^\d{2,4}_athena_commando_/i.test(s);
+}
+function searchSkinCatalog(q){
+  const query=cleanSkinSearchText(q).toLowerCase();
+  if(!query)return [];
+  const words=query.split(/\s+/).filter(Boolean);
+  return SKIN_SEARCH_CATALOG
+    .map(item=>{
+      const hay=[item.label,item.id].join(" ").toLowerCase();
+      let score=0;
+      if(hay===query)score+=100;
+      if(hay.includes(query))score+=60;
+      for(const w of words)if(hay.includes(w))score+=10;
+      return {...item,score};
+    })
+    .filter(x=>x.score>0)
+    .sort((a,b)=>b.score-a.score||a.label.localeCompare(b.label))
+    .slice(0,8);
+}
+function addSkinTextQuery(q){
+  const clean=cleanSkinSearchText(q);
+  if(!clean)return;
+  if(looksLikeSkinId(clean)){
+    const id=clean.replace(/^cid_/i,"");
+    addTarget(targets,"skin[]",id);
+    renderTargets();
+    renderSkinSearch();
+    return;
+  }
+  if(skinNameQueries.some(x=>x.toLowerCase()===clean.toLowerCase()))return;
+  skinNameQueries.push(clean);
+  localStorage.setItem("wrota.skinNameQueries",JSON.stringify(skinNameQueries));
+  renderSkinSearch();
+}
+function removeSkinTextQuery(i){
+  skinNameQueries.splice(i,1);
+  localStorage.setItem("wrota.skinNameQueries",JSON.stringify(skinNameQueries));
+  renderSkinSearch();
+}
+function renderSkinSearch(){
+  const input=$("skinSearchInput");
+  const box=$("skinSearchResults");
+  const list=$("skinQueryList");
+  const count=$("skinQueryCount");
+  if(!input||!box||!list||!count)return;
+
+  const q=cleanSkinSearchText(input.value);
+  const matches=searchSkinCatalog(q);
+  const rows=[];
+
+  for(const m of matches){
+    rows.push(`<button class="skin-result" data-skin-id="${esc(m.id)}" data-skin-label="${esc(m.label)}" type="button"><strong>${esc(m.label)}</strong><code>${esc(m.id)}</code><span>exact skin filter</span></button>`);
+  }
+
+  if(q){
+    if(looksLikeSkinId(q)){
+      rows.push(`<button class="skin-result custom" data-skin-id="${esc(q.replace(/^cid_/i,""))}" data-skin-label="${esc(q)}" type="button"><strong>Use exact skin ID</strong><code>${esc(q)}</code><span>skin[] filter</span></button>`);
+    }else{
+      rows.push(`<button class="skin-result custom" data-title-query="${esc(q)}" type="button"><strong>Search listings for “${esc(q)}”</strong><code>title=${esc(q)}</code><span>API title search</span></button>`);
+    }
+  }
+
+  box.innerHTML=rows.join("");
+  box.querySelectorAll("[data-skin-id]").forEach(b=>b.onclick=()=>{
+    addTarget(targets,"skin[]",b.dataset.skinId);
+    renderTargets();
+    input.value="";
+    renderSkinSearch();
+    log("skin target added",{label:b.dataset.skinLabel,id:b.dataset.skinId});
+  });
+  box.querySelectorAll("[data-title-query]").forEach(b=>b.onclick=()=>{
+    addSkinTextQuery(b.dataset.titleQuery);
+    input.value="";
+    renderSkinSearch();
+    log("title skin search added",{query:b.dataset.titleQuery});
+  });
+
+  count.textContent=String(skinNameQueries.length);
+  list.innerHTML=skinNameQueries.map((q,i)=>`<span class="chip"><code>title</code>${esc(q)}<button data-rm-skin-query="${i}">x</button></span>`).join("");
+  list.querySelectorAll("[data-rm-skin-query]").forEach(b=>b.onclick=()=>removeSkinTextQuery(Number(b.dataset.rmSkinQuery)));
+}
+function titleSearchTargets(){
+  return skinNameQueries.map(q=>({titleQuery:q,label:`Skin search: ${q}`}));
 }
 
 function canonicalParam(k){const s=decodeURIComponent(String(k||"")).toLowerCase();if(s.startsWith("skin"))return"skin[]";if(s.startsWith("pickaxe"))return"pickaxe[]";if(s.startsWith("dance")||s.startsWith("emote"))return"dance[]";if(s.startsWith("glider"))return"glider[]";return""}
@@ -216,8 +326,11 @@ function params(t,page){
   const ord=$("order").value;
   const p={page,order:ord,order_by:ord,currency:"usd",locale:"en",fields_include:"*"};
   const q=$("q").value.trim();const min=num($("minPrice").value);const max=num($("maxPrice").value);
-  if(q)p.title=q;if(min!==null)p.pmin=min;if(max!==null)p.pmax=max;
-  p[t.param]=t.id;
+  if(t.titleQuery)p.title=t.titleQuery;
+  else if(q)p.title=q;
+  if(min!==null)p.pmin=min;
+  if(max!==null)p.pmax=max;
+  if(t.param&&t.id)p[t.param]=t.id;
   return p;
 }
 async function pool(tasks,limit,onDone){
@@ -325,10 +438,18 @@ async function test(){try{status("TESTING");await api("/",{locale:"en"});await a
 function exportJson(name,data){const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=name;a.click();URL.revokeObjectURL(url)}
 function bind(){
   loadCfg();try{saved=JSON.parse(localStorage.getItem("wrota.api.saved")||"[]")}catch{}
-  renderTargets();renderFeed();renderSaved();
+  try{skinNameQueries=JSON.parse(localStorage.getItem("wrota.skinNameQueries")||"[]")}catch{skinNameQueries=[]}
+  renderTargets();renderSkinSearch();renderFeed();renderSaved();
   $("showBtn").onclick=()=>{const show=$("apiKey").type==="password";$("apiKey").type=show?"text":"password";$("showBtn").textContent=show?"HIDE":"SHOW"};
   $("testBtn").onclick=test;$("saveBtn").onclick=()=>{saveCfg();log("settings saved")};$("clearBtn").onclick=()=>{$("apiKey").value="";saveCfg()};
   $("scanBtn").onclick=scan;
+  if($("skinSearchInput")){
+    $("skinSearchInput").addEventListener("input",renderSkinSearch);
+    $("skinSearchInput").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();addSkinTextQuery($("skinSearchInput").value);$("skinSearchInput").value="";renderSkinSearch();}});
+  }
+  if($("skinSearchApplyBtn")){
+    $("skinSearchApplyBtn").onclick=()=>{addSkinTextQuery($("skinSearchInput").value);$("skinSearchInput").value="";renderSkinSearch();};
+  }
   if($("exclusiveMode")){
     $("exclusiveMode").value=localStorage.getItem("wrota.exclusive.mode")||"off";
     $("exclusiveMode").addEventListener("change",()=>{localStorage.setItem("wrota.exclusive.mode",$("exclusiveMode").value);log("exclusive mode",{mode:$("exclusiveMode").value,count:exclusiveTargets().length});});
